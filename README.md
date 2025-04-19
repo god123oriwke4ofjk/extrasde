@@ -1,9 +1,9 @@
-# extrasde
+# extra
 
-'git clone https://github.com/god123oriwke4ofjk/extrasde'
+## how
 
+'''bash
+git clone https://github.com/god123oriwke4ofjk/extrasde
 cd extrasde
-
 chmod +x install.sh
-
 ./install.sh
