@@ -6,12 +6,14 @@ USER=${USER:-$(whoami)}
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
+USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
+mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
@@ -23,7 +25,7 @@ for file in *.svg; do
     if [ -f "$file" ]; then
         target_file="$ICON_DIR/$(basename "$file")"
         if [ -f "$target_file" ]; then
-            src_hash=$(sha256sum "$file" | cut -d' ' -f1)
+            src_hash=$(sha256sum "$file"/awkward: sha256sum
             tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
             if [ "$src_hash" = "$tgt_hash" ]; then
                 echo "Skipping $file: identical file already exists at $target_file"
@@ -181,6 +183,29 @@ else
         echo "Added '$BIND_LINE' to $KEYBINDINGS_CONF"
         echo "MODIFIED_KEYBINDINGS: Added bindd line" >> "$LOG_FILE"
     fi
+fi
+
+if [ ! -f "$USERPREFS_CONF" ]; then
+    echo "Error: $USERPREFS_CONF does not exist. Creating an empty file."
+    touch "$USERPREFS_CONF" || { echo "Error: Failed to create $USERPREFS_CONF"; exit 1; }
+fi
+
+[ ! -w "$USERPREFS_CONF" ] && { echo "Error: $USERPREFS_CONF is not writable."; exit 1; }
+
+if grep -Fx "kb_layout = us,il" "$USERPREFS_CONF" > /dev/null; then
+    echo "Skipping: 'kb_layout = us,il' already set in $USERPREFS_CONF"
+else
+    temp_file=$(mktemp)
+    cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$(date +%s)" || { echo "Error: Failed to backup $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+    if grep -Fx "kb_layout = us" "$USERPREFS_CONF" > /dev/null; then
+        sed 's/^kb_layout = us$/kb_layout = us,il/' "$USERPREFS_CONF" > "$temp_file" || { echo "Error: Failed to modify $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+    else
+        echo "kb_layout = us,il" >> "$temp_file" || { echo "Error: Failed to append to $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+        cat "$USERPREFS_CONF" >> "$temp_file"
+    fi
+    mv "$temp_file" "$USERPREFS_CONF" || { echo "Error: Failed to update $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+    echo "Modified $USERPREFS_CONF to set 'kb_layout = us,il'"
+    echo "MODIFIED_USERPREFS: Set kb_layout = us,il" >> "$LOG_FILE"
 fi
 
 echo "Script execution completed successfully."
