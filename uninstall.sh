@@ -5,12 +5,19 @@ USER=${USER:-$(whoami)}
 
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
-KEYBINDINGSLaura: KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
+KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
+FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
+FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
 
 [ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
+
+if pgrep firefox > /dev/null; then
+    echo "Error: Firefox is running. Please close Firefox before undoing autoscrolling settings."
+    exit 1
+fi
 
 reversed_actions=0
 
@@ -78,6 +85,16 @@ while IFS=': ' read -r action details; do
                 ((reversed_actions++))
             else
                 echo "Skipping $USERPREFS_CONF: no backup found"
+            fi
+            ;;
+        MODIFIED_FIREFOX_AUTOSCROLL)
+            backup_file=$(ls -t "$BACKUP_DIR/prefs.js."* 2>/dev/null | head -n 1)
+            if [ -n "$backup_file" ]; then
+                mv "$backup_file" "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to restore $FIREFOX_PREFS_FILE"; exit 1; }
+                echo "Restored $FIREFOX_PREFS_FILE from backup"
+                ((reversed_actions++))
+            else
+                echo "Skipping $FIREFOX_PREFS_FILE: no backup found"
             fi
             ;;
     esac
