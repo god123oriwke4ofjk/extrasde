@@ -1,17 +1,37 @@
-mv sleep_toggle.svg /home/kot/.local/share/icons/Wallbash-Icon/sleep_toggle.svg
-mv awake-toggle.svg /home/kot/.local/share/icons/Wallbash-Icon/awake-toggle.svg
-
-TOGGLE_SLEEP="/home/$USER/.local/lib/hyde/toggle-sleep.sh"
-cat > "TOGGLE_SLEEP" << 'EOF'
 #!/bin/bash
-# File: ~/.config/hypr/scripts/toggle-sleep.sh
+
+USER=${USER:-$(whoami)}
+if [ -z "$USER" ]; then
+    echo "Error: Could not determine username."
+    exit 1
+fi
+
+ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
+TOGGLE_SLEEP="/home/$USER/.local/lib/hyde/toggle-sleep.sh"
+
+mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
+mkdir -p "$(dirname "$TOGGLE_SLEEP")" || { echo "Error: Failed to create $(dirname "$TOGGLE_SLEEP")"; exit 1; }
+
+for file in *.svg; do
+    if [ -f "$file" ]; then
+        mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $file"; exit 1; }
+    else
+        echo "Warning: No .svg files found in current directory, skipping."
+        break
+    fi
+done
+
+cat > "$TOGGLE_SLEEP" << 'EOF'
+#!/bin/bash
+# File: ~/.local/lib/hyde/toggle-sleep.sh
 
 scrDir=$(dirname "$(realpath "$0")")
 # shellcheck disable=SC1091
-source "$scrDir/globalcontrol.sh"
+source "$scrDir/globalcontrol.sh" || { echo "Error: Failed to source globalcontrol.sh"; exit 1; }
 
 STATE_FILE="$HOME/.config/hypr/sleep-inhibit.state"
 IDLE_DAEMON="hypridle" # Change to "swayidle" if you use swayidle
+ICONS_DIR="$HOME/.local/share/icons" # Define ICONS_DIR explicitly
 
 inhibit_sleep() {
     pkill "$IDLE_DAEMON"
@@ -42,5 +62,12 @@ else
 fi
 EOF
 
-chmod +x "TOGGLE_SLEEP"
+if [ ! -f "$TOGGLE_SLEEP" ]; then
+    echo "Error: Failed to create $TOGGLE_SLEEP"
+    exit 1
+fi
+
+chmod +x "$TOGGLE_SLEEP" || { echo "Error: Failed to make $TOGGLE_SLEEP executable"; exit 1; }
+
 echo "Created toggle sleep script at $TOGGLE_SLEEP"
+ls -l "$TOGGLE_SLEEP"
