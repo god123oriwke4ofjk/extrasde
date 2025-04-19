@@ -9,6 +9,11 @@ KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
+FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
+FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
+
+[ -z "$FIREFOX_PROFILE_DIR" ] && { echo "Error: Could not locate Firefox profile directory."; exit 1; }
+[ ! -f "$FIREFOX_PREFS_FILE" ] && { echo "Error: Firefox prefs.js not found at $FIREFOX_PREFS_FILE."; exit 1; }
 
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
@@ -25,7 +30,7 @@ for file in *.svg; do
     if [ -f "$file" ]; then
         target_file="$ICON_DIR/$(basename "$file")"
         if [ -f "$target_file" ]; then
-            src_hash=$(sha256sum "$file"/awkward: sha256sum
+            src_hash=$(sha256sum "$file" | cut -d' ' -f1)
             tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
             if [ "$src_hash" = "$tgt_hash" ]; then
                 echo "Skipping $file: identical file already exists at $target_file"
@@ -206,6 +211,27 @@ else
     mv "$temp_file" "$USERPREFS_CONF" || { echo "Error: Failed to update $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
     echo "Modified $USERPREFS_CONF to set 'kb_layout = us,il'"
     echo "MODIFIED_USERPREFS: Set kb_layout = us,il" >> "$LOG_FILE"
+fi
+
+if pgrep firefox > /dev/null; then
+    echo "Error: Firefox is running. Please close Firefox before modifying autoscrolling settings."
+    exit 1
+fi
+
+if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
+    echo "Skipping: Firefox autoscrolling is already enabled."
+else
+    temp_file=$(mktemp)
+    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$(date +%s)" || { echo "Error: Failed to backup $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
+    if grep -q 'user_pref("general.autoScroll", false)' "$FIREFOX_PREFS_FILE"; then
+        sed 's/user_pref("general.autoScroll", false)/user_pref("general.autoScroll", true)/' "$FIREFOX_PREFS_FILE" > "$temp_file" || { echo "Error: Failed to modify $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
+    else
+        echo 'user_pref("general.autoScroll", true);' >> "$temp_file" || { echo "Error: Failed to append to $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
+        cat "$FIREFOX_PREFS_FILE" >> "$temp_file"
+    fi
+    mv "$temp_file" "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to update $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
+    echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
+    echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
 fi
 
 echo "Script execution completed successfully."
