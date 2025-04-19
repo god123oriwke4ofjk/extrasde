@@ -12,18 +12,41 @@ TOGGLE_SLEEP="/home/$USER/.local/lib/hyde/toggle-sleep.sh"
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$(dirname "$TOGGLE_SLEEP")" || { echo "Error: Failed to create $(dirname "$TOGGLE_SLEEP")"; exit 1; }
 
+moved_files=0
 for file in *.svg; do
     if [ -f "$file" ]; then
-        mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $file"; exit 1; }
+        target_file="$ICON_DIR/$(basename "$file")"
+        if [ -f "$target_file" ]; then
+            echo "Skipping $file: already exists at $target_file"
+        else
+            mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $file"; exit 1; }
+            echo "Moved $file to $ICON_DIR/"
+            ((moved_files++))
+        fi
     else
         echo "Warning: No .svg files found in current directory, skipping."
         break
     fi
 done
+[ "$moved_files" -eq 0 ] && echo "No new .svg files were moved."
+
+if [ -f "$TOGGLE_SLEEP" ]; then
+    echo "Warning: $TOGGLE_SLEEP already exists."
+    if [ -x "$TOGGLE_SLEEP" ]; then
+        echo "$TOGGLE_SLEEP is already executable, skipping creation."
+        ls -l "$TOGGLE_SLEEP"
+        exit 0
+    else
+        echo "$TOGGLE_SLEEP exists but is not executable, making it executable."
+        chmod +x "$TOGGLE_SLEEP" || { echo "Error: Failed to make $TOGGLE_SLEEP executable"; exit 1; }
+        ls -l "$TOGGLE_SLEEP"
+        exit 0
+    fi
+fi
 
 cat > "$TOGGLE_SLEEP" << 'EOF'
 #!/bin/bash
-# File: ~/.local/lib/hyde/toggle-sleep.sh
+# File: ~/.localther/hyde/toggle-sleep.sh
 
 scrDir=$(dirname "$(realpath "$0")")
 # shellcheck disable=SC1091
