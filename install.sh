@@ -6,10 +6,16 @@ USER=${USER:-$(whoami)}
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
+LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
+BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
+mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
+
+touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
+echo "[$(date)] New installation session" >> "$LOG_FILE"
 
 moved_files=0
 replace_files=()
@@ -28,6 +34,7 @@ for file in *.svg; do
         else
             mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $file"; exit 1; }
             echo "Moved $file to $ICON_DIR/"
+            echo "MOVED_SVG: $file -> $target_file" >> "$LOG_FILE"
             ((moved_files++))
         fi
     else
@@ -44,8 +51,11 @@ if [ ${#replace_files[@]} -gt 0 ]; then
     read -p "Replace these files in $ICON_DIR? [y/N]: " replace_choice
     if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
         for file in "${replace_files[@]}"; do
+            target_file="$ICON_DIR/$(basename "$file")"
+            cp "$target_file" "$BACKUP_DIR/$(basename "$file").$(date +%s)" || { echo "Error: Failed to backup $target_file"; exit 1; }
             mv "$file" "$ICON_DIR/" || { echo "Error: Failed to replace $file"; exit 1; }
             echo "Replaced $file in $ICON_DIR/"
+            echo "REPLACED_SVG: $file -> $target_file" >> "$LOG_FILE"
             ((moved_files++))
         done
     else
@@ -112,9 +122,11 @@ for script_name in "${!scripts[@]}"; do
             echo "$script_path has different content."
             read -p "Replace $script_path with new content? [y/N]: " replace_script
             if [[ "$replace_script" =~ ^[Yy]$ ]]; then
+                cp "$script_path" "$BACKUP_DIR/$script_name.$(date +%s)" || { echo "Error: Failed to backup $script_path"; exit 1; }
                 echo "${scripts[$script_name]}" > "$script_path" || { echo "Error: Failed to write $script_path"; exit 1; }
                 chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
                 echo "Replaced and made $script_path executable."
+                echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
             else
                 echo "Skipping replacement of $script_path."
                 [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
@@ -124,6 +136,7 @@ for script_name in "${!scripts[@]}"; do
         echo "${scripts[$script_name]}" > "$script_path" || { echo "Error: Failed to create $script_path"; exit 1; }
         chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
         echo "Created and made $script_path executable."
+        echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
     fi
     ls -l "$script_path"
 done
@@ -142,6 +155,7 @@ else
     UTILITIES_START='$d=[$ut]'
     SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
     temp_file=$(mktemp)
+    cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$(date +%s)" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
     if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
         echo "Warning: Utilities section ($UTILITIES_START) not found in $KEYBINDINGS_CONF. Appending at the end."
         echo -e "\n$UTILITIES_START\n$BIND_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
@@ -165,6 +179,7 @@ else
         fi
         mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
         echo "Added '$BIND_LINE' to $KEYBINDINGS_CONF"
+        echo "MODIFIED_KEYBINDINGS: Added bindd line" >> "$LOG_FILE"
     fi
 fi
 
