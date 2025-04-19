@@ -5,7 +5,8 @@ USER=${USER:-$(whoami)}
 
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
-KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
+KEYBINDINGSLaura: KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
+USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 
@@ -67,6 +68,16 @@ while IFS=': ' read -r action details; do
                 ((reversed_actions++))
             else
                 echo "Skipping $KEYBINDINGS_CONF: no backup found"
+            fi
+            ;;
+        MODIFIED_USERPREFS)
+            backup_file=$(ls -t "$BACKUP_DIR/userprefs.conf."* 2>/dev/null | head -n 1)
+            if [ -n "$backup_file" ]; then
+                mv "$backup_file" "$USERPREFS_CONF" || { echo "Error: Failed to restore $USERPREFS_CONF"; exit 1; }
+                echo "Restored $USERPREFS_CONF from backup"
+                ((reversed_actions++))
+            else
+                echo "Skipping $USERPREFS_CONF: no backup found"
             fi
             ;;
     esac
