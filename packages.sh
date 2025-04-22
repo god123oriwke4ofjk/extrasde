@@ -62,13 +62,13 @@ if ! command -v flatpak &> /dev/null; then
     sudo pacman -Syu --noconfirm flatpak
 fi
 
-if ! flatpak remotes | grep -q flathub; then
-    echo "Flathub is not enabled. Adding Flathub repository..."
-    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+if ! flatpak --user remotes | grep -q flathub; then
+    echo "Flathub is not enabled for user. Adding Flathub repository for user..."
+    flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 fi
 
 echo "Installing Vesktop..."
-flatpak install -y flathub dev.vencord.Vesktop
+flatpak install --user -y flathub dev.vencord.Vesktop
 
 echo "Modifying Vesktop desktop file..."
 
