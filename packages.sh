@@ -17,7 +17,7 @@ BRAVE_DESKTOP_FILE="brave-browser.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
-EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.2/netflix-1080p-1.32.2.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 
@@ -75,15 +75,11 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
-if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to unpack extension to $EXTENSION_DIR"
+if [[ ! -f "$EXTENSION_DIR/manifest.json" ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)"
     exit 1
 fi
 rm /tmp/netflix-1080p.crx
-if [[ ! -d "$EXTENSION_DIR" ]]; then
-    echo "Error: Extension directory $EXTENSION_DIR does not exist"
-    exit 1
-fi
 
 if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
     echo "The extension is already loaded in the Exec line for Brave"
