@@ -17,7 +17,7 @@ BRAVE_DESKTOP_FILE="brave-browser.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
-EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/Netflix%201080p%201.32.0.crx"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 
@@ -41,10 +41,9 @@ BRAVE_BACKUP_FILE="$USER_DIR/$BRAVE_DESKTOP_FILE.bak"
 cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BRAVE_BACKUP_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to create backup of $BRAVE_DESKTOP_FILE"
-        exit 1
-else
-    echo "Created backup at $BRAVE_BACKUP_FILE"
+    exit 1
 fi
+echo "Created backup at $BRAVE_BACKUP_FILE"
 
 if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
     sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE"
