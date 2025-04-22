@@ -17,7 +17,9 @@ BRAVE_DESKTOP_FILE="brave-browser.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/Netflix%201080p%201.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
+EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 
 if [[ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]]; then
     echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"
@@ -39,9 +41,10 @@ BRAVE_BACKUP_FILE="$USER_DIR/$BRAVE_DESKTOP_FILE.bak"
 cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BRAVE_BACKUP_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to create backup of $BRAVE_DESKTOP_FILE"
-    exit 1
+        exit 1
+    fi
+    echo "Created backup at $BRAVE_BACKUP_FILE"
 fi
-echo "Created backup at $BRAVE_BACKUP_FILE"
 
 if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
     sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE"
@@ -66,11 +69,35 @@ else
     grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
 fi
 
-echo "The Netflix 1080p extension could not be automatically installed due to an unavailable download link."
-echo "Please manually install the 'New Netflix 1080p' extension from the Chrome Web Store:"
-echo "  1. Open Brave and navigate to: https://chromewebstore.google.com/detail/new-netflix-1080p/mdlbikciddolbenfkgggdegphnhmnfcg"
-echo "  2. Click 'Add to Chrome' and follow the prompts to install."
-echo "  3. Verify the extension is enabled in brave://extensions/"
+mkdir -p "$EXTENSION_DIR"
+wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to download extension from $EXTENSION_URL"
+    exit 1
+fi
+unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR"
+    exit 1
+fi
+rm /tmp/netflix-1080p.crx
+if [[ ! -d "$EXTENSION_DIR" ]]; then
+    echo "Error: Extension directory $EXTENSION_DIR does not exist"
+    exit 1
+fi
+
+if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    echo "The extension is already loaded in the Exec line for Brave"
+else
+    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to add extension to $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "New Exec line:"
+    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+fi
 
 if ! command -v flatpak &> /dev/null; then
     sudo pacman -Syu --noconfirm flatpak
