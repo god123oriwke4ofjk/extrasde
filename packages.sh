@@ -1,7 +1,6 @@
 #!/bin/bash
 
 if ! command -v yay &> /dev/null; then
-    echo "yay is not installed. Installing yay..."
     sudo pacman -Syu --noconfirm git base-devel
     git clone https://aur.archlinux.org/yay.git /tmp/yay
     cd /tmp/yay
@@ -10,15 +9,15 @@ if ! command -v yay &> /dev/null; then
     rm -rf /tmp/yay
 fi
 
-echo "Installing Brave..."
 yay -S --noconfirm brave-bin
-
-echo "Modifying Brave desktop file..."
 
 BRAVE_DESKTOP_FILE="brave-browser.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
+EXTENSION_URL="https://github.com/truedread/netflix-1080p-chrome/raw/main/Netflix%201080p%201.18.2.crx"
+EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
+EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 
 if [[ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]]; then
     echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"
@@ -57,20 +56,37 @@ else
     grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
 fi
 
+mkdir -p "$EXTENSION_DIR"
+wget -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
+rm /tmp/netflix-1080p.crx
+if [[ ! -d "$EXTENSION_DIR" ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR"
+    exit 1
+fi
+
+if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    echo "The extension is already loaded in the Exec line for Brave"
+else
+    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to add extension to $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "New Exec line:"
+    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+fi
+
 if ! command -v flatpak &> /dev/null; then
-    echo "Flatpak is not installed. Installing flatpak..."
     sudo pacman -Syu --noconfirm flatpak
 fi
 
 if ! flatpak --user remotes | grep -q flathub; then
-    echo "Flathub is not enabled for user. Adding Flathub repository for user..."
     flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 fi
 
-echo "Installing Vesktop..."
 flatpak install --user -y flathub dev.vencord.Vesktop
-
-echo "Modifying Vesktop desktop file..."
 
 VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
 VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
@@ -115,6 +131,5 @@ echo "If Brave crashes, restore the backup by running:"
 echo "  cp \"$BRAVE_BACKUP_FILE\" \"$USER_DIR/$BRAVE_DESKTOP_FILE\""
 echo "If Vesktop crashes, restore the backup by running:"
 echo "  cp \"$VESKTOP_BACKUP_FILE\" \"$USER_DIR/$VESKTOP_DESKTOP_FILE\""
-
 echo "Installation and modification complete!"
 exit 0
