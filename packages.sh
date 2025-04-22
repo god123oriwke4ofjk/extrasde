@@ -17,6 +17,7 @@ BRAVE_DESKTOP_FILE="brave-browser.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
+EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 
 if [[ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]]; then
     echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"
@@ -41,6 +42,16 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 echo "Created backup at $BRAVE_BACKUP_FILE"
+
+if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "Removed invalid --load-extension flag from $BRAVE_DESKTOP_FILE"
+fi
+
+if [[ -d "$EXTENSION_DIR" ]]; then
+    rm -rf "$EXTENSION_DIR"
+    echo "Removed invalid extension directory $EXTENSION_DIR"
+fi
 
 if grep -q -- "$ARGUMENT" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
     echo "The $ARGUMENT is already present in the Exec line for Brave"
