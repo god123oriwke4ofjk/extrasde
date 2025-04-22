@@ -42,7 +42,7 @@ cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BRAVE_BACKUP_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to create backup of $BRAVE_DESKTOP_FILE"
         exit 1
-    fi
+else
     echo "Created backup at $BRAVE_BACKUP_FILE"
 fi
 
