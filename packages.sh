@@ -9,6 +9,8 @@ if ! command -v yay &> /dev/null; then
     rm -rf /tmp/yay
 fi
 
+sudo pacman -Syu --noconfirm wget unzip
+
 yay -S --noconfirm brave-bin
 
 BRAVE_DESKTOP_FILE="brave-browser.desktop"
@@ -58,10 +60,18 @@ fi
 
 mkdir -p "$EXTENSION_DIR"
 wget -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to download extension from $EXTENSION_URL"
+    exit 1
+fi
 unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR"
+    exit 1
+fi
 rm /tmp/netflix-1080p.crx
 if [[ ! -d "$EXTENSION_DIR" ]]; then
-    echo "Error: Failed to unpack extension to $EXTENSION_DIR"
+    echo "Error: Extension directory $EXTENSION_DIR does not exist"
     exit 1
 fi
 
