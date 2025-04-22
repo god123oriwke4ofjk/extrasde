@@ -59,7 +59,7 @@ else
 fi
 
 mkdir -p "$EXTENSION_DIR"
-wget -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to download extension from $EXTENSION_URL"
     exit 1
