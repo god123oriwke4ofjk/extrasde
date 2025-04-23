@@ -17,6 +17,9 @@ FULL_PROFILE_DIR="$HOME/.mozilla/firefox/$FIREFOX_PROFILE_DIR"
 EXTENSIONS_DIR="$FULL_PROFILE_DIR/extensions"
 STAGING_DIR="$FULL_PROFILE_DIR/extensions.staging"
 EXTENSIONS_JSON="$FULL_PROFILE_DIR/extensions.json"
+FONT_DIR="$HOME/.local/share/fonts"
+SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
+SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
 
 [ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
 
@@ -190,6 +193,38 @@ while IFS=': ' read -r action details; do
         CREATED_PROFILE)
             echo "Skipping $details: Profile directory not removed to preserve user data"
             ;;
+        COPIED_FONTS)
+            font_dir="${details##* -> }"
+            if [ -d "$font_dir" ]; then
+                rm -rf "$font_dir" || { echo "Error: Failed to remove $font_dir"; exit 1; }
+                echo "Removed $font_dir"
+                fc-cache -fv "$font_dir" 2>/dev/null || echo "Failed to refresh font cache after removal"
+                ((reversed_actions++))
+            else
+                echo "Skipping $font_dir: already removed"
+            fi
+            ;;
+        CREATED_FONTCONFIG)
+            fontconfig_file="$details"
+            if [ -f "$fontconfig_file" ]; then
+                rm "$fontconfig_file" || { echo "Error: Failed to remove $fontconfig_file"; exit 1; }
+                echo "Removed $fontconfig_file"
+                ((reversed_actions++))
+            else
+                echo "Skipping $fontconfig_file: already removed"
+            fi
+            ;;
+        BACKUP_FONTCONFIG)
+            fontconfig_file="${details%% -> *}"
+            backup_file="${details##* -> }"
+            if [ -f "$backup_file" ]; then
+                mv "$backup_file" "$fontconfig_file" || { echo "Error: Failed to restore $fontconfig_file"; exit 1; }
+                echo "Restored $fontconfig_file from backup"
+                ((reversed_actions++))
+            else
+                echo "Skipping $fontconfig_file: no backup found"
+            fi
+            ;;
     esac
 done < "$LOG_FILE"
 
@@ -222,6 +257,14 @@ fi
 
 if [ -d "$STAGING_DIR" ] && [ -z "$(ls -A "$STAGING_DIR")" ]; then
     rmdir "$STAGING_DIR" && echo "Removed empty $STAGING_DIR"
+fi
+
+if [ -d "$FONT_DIR" ] && [ -z "$(ls -A "$FONT_DIR")" ]; then
+    rmdir "$FONT_DIR" && echo "Removed empty $FONT_DIR"
+fi
+
+if [ -d "$SYSTEM_FONTCONFIG_DIR" ] && [ -z "$(ls -A "$SYSTEM_FONTCONFIG_DIR")" ]; then
+    rmdir "$SYSTEM_FONTCONFIG_DIR" && echo "Removed empty $SYSTEM_FONTCONFIG_DIR"
 fi
 
 echo "Undo completed successfully."
