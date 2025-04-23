@@ -13,11 +13,15 @@ FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | g
 FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
 USER_DIR="$HOME/.local/share/applications"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
+FULL_PROFILE_DIR="$HOME/.mozilla/firefox/$FIREFOX_PROFILE_DIR"
+EXTENSIONS_DIR="$FULL_PROFILE_DIR/extensions"
+STAGING_DIR="$FULL_PROFILE_DIR/extensions.staging"
+EXTENSIONS_JSON="$FULL_PROFILE_DIR/extensions.json"
 
 [ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
 
 if pgrep firefox >/dev/null; then
-    echo "Error: Firefox is running. Please close Firefox before undoing autoscrolling settings."
+    echo "Error: Firefox is running. Please close Firefox before undoing settings."
     exit 1
 fi
 
@@ -159,6 +163,33 @@ while IFS=': ' read -r action details; do
                 echo "Skipping $extension_path: already removed"
             fi
             ;;
+        INSTALLED_EXTENSION)
+            extension_path="${details##* -> }"
+            if [[ "$extension_path" == *.xpi ]]; then
+                if [ -f "$extension_path" ]; then
+                    rm "$extension_path" || { echo "Error: Failed to remove $extension_path"; exit 1; }
+                    echo "Removed $extension_path"
+                    ((reversed_actions++))
+                else
+                    echo "Skipping $extension_path: already removed"
+                fi
+            elif [[ "$extension_path" == *extensions.json* ]]; then
+                backup_file=$(ls -t "$BACKUP_DIR/extensions.json."* 2>/dev/null | head -n 1)
+                if [ -n "$backup_file" ] && [ -f "$EXTENSIONS_JSON" ]; then
+                    mv "$backup_file" "$EXTENSIONS_JSON" || { echo "Error: Failed to restore $EXTENSIONS_JSON"; exit 1; }
+                    echo "Restored $EXTENSIONS_JSON from backup"
+                    ((reversed_actions++))
+                else
+                    echo "Skipping $EXTENSIONS_JSON: no backup or already restored"
+                fi
+            fi
+            ;;
+        BACKUP_JSON)
+            continue
+            ;;
+        CREATED_PROFILE)
+            echo "Skipping $details: Profile directory not removed to preserve user data"
+            ;;
     esac
 done < "$LOG_FILE"
 
@@ -183,6 +214,14 @@ fi
 
 if [ -d "$HOME/.config/brave-extensions" ] && [ -z "$(ls -A "$HOME/.config/brave-extensions")" ]; then
     rmdir "$HOME/.config/brave-extensions" && echo "Removed empty $HOME/.config/brave-extensions"
+fi
+
+if [ -d "$EXTENSIONS_DIR" ] && [ -z "$(ls -A "$EXTENSIONS_DIR")" ]; then
+    rmdir "$EXTENSIONS_DIR" && echo "Removed empty $EXTENSIONS_DIR"
+fi
+
+if [ -d "$STAGING_DIR" ] && [ -z "$(ls -A "$STAGING_DIR")" ]; then
+    rmdir "$STAGING_DIR" && echo "Removed empty $STAGING_DIR"
 fi
 
 echo "Undo completed successfully."
