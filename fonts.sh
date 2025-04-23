@@ -299,6 +299,7 @@ main() {
     refresh_font_cache
     verify_font_selection
     check_snap_apps
+    hyprctl reload
     log_info "Hebrew font setup completed successfully!"
     log_info "Please restart applications or Hyprland (hyprctl reload or log out/in) to apply changes."
     log_info "Test Hebrew text in browsers, Discord (Flatpak or native), or other apps."
