@@ -11,6 +11,7 @@ LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
 FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
+DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
@@ -33,6 +34,103 @@ if ! pacman -Qs jq >/dev/null 2>&1; then
     echo "Installed jq"
 else
     echo "Skipping: jq already installed"
+fi
+
+if [ -f "$DYNAMIC_BROWSER_SCRIPT" ]; then
+    cp "$DYNAMIC_BROWSER_SCRIPT" "$BACKUP_DIR/dynamic-browser.sh.$(date +%s)" || { echo "Error: Failed to backup dynamic-browser.sh"; exit 1; }
+    echo "REPLACED_SCRIPT: dynamic-browser.sh -> $DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+    echo "Backed up and replaced dynamic-browser.sh"
+else
+    echo "CREATED_SCRIPT: dynamic-browser.sh -> $DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+    echo "Created dynamic-browser.sh"
+fi
+cat << 'EOF' > "$DYNAMIC_BROWSER_SCRIPT"
+#!/bin/bash
+
+declare -A browsers=(
+    ["firefox"]="firefox.desktop"
+    ["brave"]="brave-browser.desktop"
+    ["chromium"]="chromium.desktop"
+    ["google-chrome"]="google-chrome.desktop"
+    ["opera"]="opera.desktop"
+    ["edge"]="microsoft-edge.desktop"
+)
+
+LOG_FILE="$HOME/.dynamic_browser.log"
+
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): $1" >> "$LOG_FILE"
+}
+
+is_known_browser() {
+    local process_name="$1"
+    for browser in "${!browsers[@]}"; do
+        if [[ "$process_name" == "$browser" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+set_default_browser() {
+    local desktop_file="$1"
+    log_message "Setting default browser to $desktop_file"
+    xdg-settings set default-web-browser "$desktop_file"
+    if [[ $? -eq 0 ]]; then
+        log_message "Successfully set $desktop_file as default browser"
+    else
+        log_message "Failed to set $desktop_file as default browser"
+    fi
+}
+
+monitor_browsers() {
+    log_message "Starting browser monitoring"
+    
+    while true; do
+        active_window=$(hyprctl activewindow -j | jq -r '.class')
+        if [[ -n "$active_window" ]]; then
+            case "$active_window" in
+                "firefox") process_name="firefox" ;;
+                "Brave-browser") process_name="brave" ;;
+                "chromium" | "Chromium") process_name="chromium" ;;
+                "Google-chrome") process_name="google-chrome" ;;
+                "opera" | "Opera") process_name="opera" ;;
+                "microsoft-edge" | "Microsoft-edge") process_name="edge" ;;
+                *) process_name="" ;;
+            esac
+
+            if [[ -n "$process_name" ]] && is_known_browser "$process_name"; then
+                desktop_file="${browsers[$process_name]}"
+                log_message "Detected browser: $process_name ($desktop_file)"
+                set_default_browser "$desktop_file"
+            fi
+        fi
+        sleep 1
+    done
+}
+
+if [[ "$1" != "--bg" ]]; then
+    log_message "Starting script in background"
+    nohup "$0" --bg >> "$LOG_FILE" 2>&1 &
+    exit 0
+fi
+
+monitor_browsers
+EOF
+chmod +x "$DYNAMIC_BROWSER_SCRIPT" || { echo "Error: Failed to make dynamic-browser.sh executable"; exit 1; }
+echo "Made dynamic-browser.sh executable"
+
+if [ -f "$USERPREFS_CONF" ]; then
+    cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$(date +%s)" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
+    echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$(date +%s)" >> "$LOG_FILE"
+    echo "Backed up $USERPREFS_CONF"
+fi
+if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
+    echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
+    echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+    echo "Configured dynamic-browser.sh to run on login"
+else
+    echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
 fi
 
 moved_files=0
@@ -85,22 +183,16 @@ fi
 declare -A scripts
 scripts["toggle-sleep.sh"]="\
 #!/bin/bash
-# File: ~/.local/lib/hyde/toggle-sleep.sh
-
 scrDir=\$(dirname \"\$(realpath \"\$0\")\") 
-# shellcheck disable=SC1091
 source \"\$scrDir/globalcontrol.sh\" || { echo \"Error: Failed to source globalcontrol.sh\"; exit 1; }
-
 STATE_FILE=\"\$HOME/.config/hypr/sleep-inhibit.state\"
-IDLE_DAEMON=\"hypridle\" # Change to \"swayidle\" if you use swayidle
-ICONS_DIR=\"\$HOME/.local/share/icons\" # Define ICONS_DIR explicitly
-
+IDLE_DAEMON=\"hypridle\"
+ICONS_DIR=\"\$HOME/.local/share/icons\"
 inhibit_sleep() {
     pkill \"\$IDLE_DAEMON\"
     echo \"inhibited\" > \"\$STATE_FILE\"
     notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/awake-toggle.svg\" \"Sleep Inhibited\"
 }
-
 restore_sleep() {
     pkill \"\$IDLE_DAEMON\"
     if [ \"\$IDLE_DAEMON\" = \"hypridle\" ]; then
@@ -116,7 +208,6 @@ restore_sleep() {
     echo \"normal\" > \"\$STATE_FILE\"
     notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/sleep_toggle.svg\" \"Sleep Restored\"
 }
-
 if [ -f \"\$STATE_FILE\" ] && [ \"\$(cat \"\$STATE_FILE\")\" = \"inhibited\" ]; then
     restore_sleep
 else
