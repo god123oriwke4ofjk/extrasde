@@ -42,10 +42,10 @@ start_vpn() {
     if pgrep -F "$VPN_DIR/vpn.pid" >/dev/null; then
         echo "VPN is running."
         echo "on" > "$STATE_FILE"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn-svgrepo-com.svg "VPN CONNECTED" "$LOCATION"
     else
         echo "Failed to start VPN. Check OpenVPN logs."
         exit 1
-    notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn-svgrepo-com.svg "VPN CONNECTED" "$LOCATION"
     }
 }
 
@@ -57,6 +57,7 @@ stop_vpn() {
         rm -f "$VPN_DIR/vpn.pid"
         echo "VPN stopped."
         echo "off" > "$STATE_FILE"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn-svgrepo-com.svg "VPN DISCONNECTED"
     else
         echo "No VPN process found."
     fi
