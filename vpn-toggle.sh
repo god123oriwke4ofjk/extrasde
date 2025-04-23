@@ -1,24 +1,20 @@
 #!/bin/bash
 
-# Directory to store VPNGate configs and state
 VPN_DIR="$HOME/.vpngate"
 STATE_FILE="$VPN_DIR/vpn_state"
 CONFIG_FILE="$VPN_DIR/vpngate.ovpn"
 
-# Ensure the script is not run as root
 if [ "$EUID" -eq 0 ]; then
     echo "Please do not run this script as root."
     exit 1
 fi
 
-# Function to install dependencies
 install_dependencies() {
     echo "Installing OpenVPN and dependencies..."
     sudo pacman -Syu --noconfirm
     sudo pacman -S --noconfirm openvpn curl
 }
 
-# Function to download a VPNGate config
 download_vpngate_config() {
     echo "Downloading VPNGate configuration..."
     mkdir -p "$VPN_DIR"
@@ -28,7 +24,6 @@ download_vpngate_config() {
         echo "Failed to retrieve VPNGate config. Check your internet connection."
         exit 1
     }
-    # Download the config file
     curl -s "$CONFIG_URL" -o "$CONFIG_FILE"
     if [ ! -s "$CONFIG_FILE" ]; then
         echo "Downloaded config is empty or invalid."
@@ -63,17 +58,14 @@ stop_vpn() {
     fi
 }
 
-# Check if dependencies are installed
 if ! command -v openvpn >/dev/null || ! command -v curl >/dev/null; then
     install_dependencies
 fi
 
-# Check if VPN config exists, download if not
 if [ ! -f "$CONFIG_FILE" ]; then
     download_vpngate_config
 fi
 
-# Check VPN state and toggle
 if [ -f "$STATE_FILE" ] && [ "$(cat "$STATE_FILE")" = "on" ]; then
     stop_vpn
 else
