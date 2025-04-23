@@ -45,7 +45,7 @@ start_vpn() {
     else
         echo "Failed to start VPN. Check OpenVPN logs."
         exit 1
-    notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/awake-toggl
+    notify-send -a \"HyDE Alert\" -r 91190 -t 800 -i \"\${ICONS_DIR}/Wallbash-Icon/
     }
 }
 
