@@ -5,7 +5,18 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' 
+NC='\033[0m'
+
+USER=${USER:-$(whoami)}
+[ -z "$USER" ] && { echo -e "${RED}[ERROR]${NC} Could not determine username."; exit 1; }
+
+LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
+BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
+FONT_DIR="$HOME/.local/share/fonts"
+SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
+SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
+FLATPAK_CONFIG_DIR="$HOME/.var/app"
+SNAP_CONFIG_DIR="$HOME/snap"
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -20,20 +31,19 @@ log_error() {
     exit 1
 }
 
-if [ "$EUID" -eq 0 ]; then
-    log_error "This script should not be run as root. Run as a regular user."
-fi
+[ "$EUID" -eq 0 ] && log_error "This script should not be run as root. Run as a regular user."
+grep -qi "arch" /etc/os-release || log_error "This script is designed for Arch Linux."
+command -v pacman >/dev/null 2>&1 || log_error "pacman not found. This script requires Arch Linux's package manager."
+command -v fc-cache >/dev/null 2>&1 || log_error "fontconfig not found. Please install fontconfig."
+ping -c 1 archlinux.org >/dev/null 2>&1 || log_error "No internet connection."
 
-if ! grep -qi "arch" /etc/os-release; then
-    log_error "This script is designed for Arch Linux. Exiting."
-fi
-
-if ! command -v pacman &>/dev/null; then
-    log_error "pacman not found. This script requires Arch Linux's package manager."
-fi
+mkdir -p "$(dirname "$LOG_FILE")" || log_error "Failed to create $(dirname "$LOG_FILE")"
+mkdir -p "$BACKUP_DIR" || log_error "Failed to create $BACKUP_DIR"
+touch "$LOG_FILE" || log_error "Failed to create $LOG_FILE"
+echo "[$(date)] New installation session (fonts)" >> "$LOG_FILE"
 
 install_yay() {
-    if ! command -v yay &>/dev/null; then
+    if ! command -v yay >/dev/null 2>&1; then
         log_info "Installing yay (AUR helper)..."
         sudo pacman -S --needed git base-devel || log_error "Failed to install dependencies for yay."
         git clone https://aur.archlinux.org/yay.git /tmp/yay || log_error "Failed to clone yay repository."
@@ -41,6 +51,7 @@ install_yay() {
         makepkg -si --noconfirm || log_error "Failed to build and install yay."
         cd -
         rm -rf /tmp/yay
+        echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
         log_info "yay installed successfully."
     else
         log_info "yay is already installed."
@@ -49,29 +60,47 @@ install_yay() {
 
 install_system_fonts() {
     log_info "Installing system-wide Hebrew-supporting fonts (noto-fonts, ttf-ms-fonts)..."
-    sudo pacman -S --needed noto-fonts || log_error "Failed to install noto-fonts."
-    yay -S --needed ttf-ms-fonts || log_error "Failed to install ttf-ms-fonts."
-    log_info "System-wide fonts installed successfully."
+    if ! pacman -Qs noto-fonts >/dev/null 2>&1; then
+        sudo pacman -S --needed noto-fonts || log_error "Failed to install noto-fonts."
+        echo "INSTALLED_PACKAGE: noto-fonts" >> "$LOG_FILE"
+        log_info "noto-fonts installed."
+    else
+        log_info "noto-fonts already installed."
+    fi
+    if ! yay -Qs ttf-ms-fonts >/dev/null 2>&1; then
+        yay -S --needed ttf-ms-fonts || log_error "Failed to install ttf-ms-fonts."
+        echo "INSTALLED_PACKAGE: ttf-ms-fonts" >> "$LOG_FILE"
+        log_info "ttf-ms-fonts installed."
+    else
+        log_info "ttf-ms-fonts already installed."
+    fi
 }
 
 install_flatpak_fonts() {
-    if command -v flatpak &>/dev/null; then
+    if command -v flatpak >/dev/null 2>&1; then
         log_info "Flatpak detected. Installing fonts for Flatpak apps..."
-        local flatpak_font_dir="$HOME/.local/share/fonts"
-        mkdir -p "$flatpak_font_dir" || log_error "Failed to create $flatpak_font_dir."
+        mkdir -p "$FONT_DIR" || log_error "Failed to create $FONT_DIR."
         
-        log_info "Copying Noto Fonts to $flatpak_font_dir..."
-        cp -r /usr/share/fonts/noto/* "$flatpak_font_dir/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
-        
-        log_info "Copying Microsoft Fonts to $flatpak_font_dir..."
-        cp -r /usr/share/fonts/TTF/* "$flatpak_font_dir/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
+        if ! ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
+            log_info "Copying Noto Fonts to $FONT_DIR..."
+            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
+            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
+        else
+            log_info "Noto Fonts already present in $FONT_DIR."
+        fi
+        if ! ls "$FONT_DIR" | grep -qi "Arial"; then
+            log_info "Copying Microsoft Fonts to $FONT_DIR..."
+            cp -r /usr/share/fonts/TTF/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
+            echo "COPIED_FONTS: ttf-ms-fonts -> $FONT_DIR" >> "$LOG_FILE"
+        else
+            log_info "Microsoft Fonts already present in $FONT_DIR."
+        fi
         
         log_info "Refreshing Flatpak font cache..."
-        fc-cache -fv "$flatpak_font_dir" || log_warning "Failed to refresh Flatpak font cache."
+        fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Flatpak font cache."
         
-        local flatpak_config_dir="$HOME/.var/app"
-        if [ -d "$flatpak_config_dir" ]; then
-            for app_dir in "$flatpak_config_dir"/*; do
+        if [ -d "$FLATPAK_CONFIG_DIR" ]; then
+            for app_dir in "$FLATPAK_CONFIG_DIR"/*; do
                 if [ -d "$app_dir" ]; then
                     local app_id=$(basename "$app_dir")
                     local app_fontconfig_dir="$app_dir/config/fontconfig"
@@ -82,15 +111,15 @@ install_flatpak_fonts() {
                     
                     if [ -f "$app_fonts_conf" ]; then
                         log_warning "Existing $app_fonts_conf found. Backing it up..."
-                        cp "$app_fonts_conf" "$app_fonts_conf.bak" || log_warning "Failed to back up $app_fonts_conf."
+                        cp "$app_fonts_conf" "$BACKUP_DIR/flatpak-$app_id-fonts.conf.$(date +%s)" || log_warning "Failed to back up $app_fonts_conf."
+                        echo "BACKUP_FONTCONFIG: $app_fonts_conf -> $BACKUP_DIR/flatpak-$app_id-fonts.conf.$(date +%s)" >> "$LOG_FILE"
                     fi
                     
                     cat << EOF > "$app_fonts_conf"
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
-    <!-- Set preferred fonts for Hebrew in Flatpak app -->
-    <dir>$flatpak_font_dir</dir>
+    <dir>$FONT_DIR</dir>
     <alias>
         <family>sans-serif</family>
         <prefer>
@@ -103,33 +132,24 @@ install_flatpak_fonts() {
         <family>serif</family>
         <prefer>
             <family>Noto Serif Hebrew</family>
-            <family> △
-            Times New Roman</family>
+            <family>Times New Roman</family>
             <family>DejaVu Serif</family>
         </prefer>
     </alias>
-    <!-- Improve font rendering -->
     <match target="font">
-        <edit name="antialias" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hinting" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hintstyle" mode="assign">
-            <const>hintslight</const>
-        </edit>
-        <edit name="rgba" mode="assign">
-            <const>rgb</const>
-        </edit>
+        <edit name="antialias" mode="assign"><bool>true</bool></edit>
+        <edit name="hinting" mode="assign"><bool>true</bool></edit>
+        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+        <edit name="rgba" mode="assign"><const>rgb</const></edit>
     </match>
 </fontconfig>
 EOF
+                    echo "CREATED_FONTCONFIG: $app_fonts_conf" >> "$LOG_FILE"
                     log_info "FontConfig created for Flatpak app $app_id at $app_fonts_conf."
                 fi
             done
         else
-            log_info "No Flatpak apps detected in $flatpak_config_dir."
+            log_info "No Flatpak apps detected in $FLATPAK_CONFIG_DIR."
         fi
     else
         log_info "Flatpak not installed. Skipping Flatpak font installation."
@@ -137,27 +157,32 @@ EOF
 }
 
 install_snap_fonts() {
-    if command -v snap &>/dev/null; then
+    if command -v snap >/dev/null 2>&1; then
         log_info "Snap detected. Installing fonts for Snap apps..."
-        local snap_font_dir="$HOME/.local/share/fonts"
-        mkdir -p "$snap_font_dir" || log_error "Failed to create $snap_font_dir."
+        mkdir -p "$FONT_DIR" || log_error "Failed to create $FONT_DIR."
         
-        log_info "Copying Noto Fonts to $snap_font_dir..."
-        cp -r /usr/share/fonts/noto/* "$snap_font_dir/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
-        
-        log_info "Copying Microsoft Fonts to $snap_font_dir..."
-        cp -r /usr/share/fonts/TTF/* "$snap_font_dir/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
+        if ! ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
+            log_info "Copying Noto Fonts to $FONT_DIR..."
+            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
+            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
+        else
+            log_info "Noto Fonts already present in $FONT_DIR."
+        fi
+        if ! ls "$FONT_DIR" | grep -qi "Arial"; then
+            log_info "Copying Microsoft Fonts to $FONT_DIR..."
+            cp -r /usr/share/fonts/TTF/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
+            echo "COPIED_FONTS: ttf-ms-fonts -> $FONT_DIR" >> "$LOG_FILE"
+        else
+            log_info "Microsoft Fonts already present in $FONT_DIR."
+        fi
         
         log_info "Refreshing Snap font cache..."
-        fc-cache -fv "$snap_font_dir" || log_warning "Failed to refresh Snap font cache."
+        fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Snap font cache."
         
-        # Create Snap-specific FontConfig configuration
-        local snap_config_dir="$HOME/snap"
-        if [ -d "$snap_config_dir" ]; then
-            for snap_app in "$snap_config_dir"/*; do
+        if [ -d "$SNAP_CONFIG_DIR" ]; then
+            for snap_app in "$SNAP_CONFIG_DIR"/*; do
                 if [ -d "$snap_app" ]; then
                     local app_id=$(basename "$snap_app")
-                    # Snap apps use a 'current' symlink to the active version
                     local app_version_dir
                     app_version_dir=$(readlink -f "$snap_app/current" 2>/dev/null)
                     if [ -z "$app_version_dir" ]; then
@@ -172,15 +197,15 @@ install_snap_fonts() {
                     
                     if [ -f "$app_fonts_conf" ]; then
                         log_warning "Existing $app_fonts_conf found. Backing it up..."
-                        cp "$app_fonts_conf" "$app_fonts_conf.bak" || log_warning "Failed to back up $app_fonts_conf."
+                        cp "$app_fonts_conf" "$BACKUP_DIR/snap-$app_id-fonts.conf.$(date +%s)" || log_warning "Failed to back up $app_fonts_conf."
+                        echo "BACKUP_FONTCONFIG: $app_fonts_conf -> $BACKUP_DIR/snap-$app_id-fonts.conf.$(date +%s)" >> "$LOG_FILE"
                     fi
                     
                     cat << EOF > "$app_fonts_conf"
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
-    <!-- Set preferred fonts for Hebrew in Snap app -->
-    <dir>$snap_font_dir</dir>
+    <dir>$FONT_DIR</dir>
     <alias>
         <family>sans-serif</family>
         <prefer>
@@ -197,28 +222,20 @@ install_snap_fonts() {
             <family>DejaVu Serif</family>
         </prefer>
     </alias>
-    <!-- Improve font rendering -->
     <match target="font">
-        <edit name="antialias" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hinting" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hintstyle" mode="assign">
-            <const>hintslight</const>
-        </edit>
-        <edit name="rgba" mode="assign">
-            <const>rgb</const>
-        </edit>
+        <edit name="antialias" mode="assign"><bool>true</bool></edit>
+        <edit name="hinting" mode="assign"><bool>true</bool></edit>
+        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+        <edit name="rgba" mode="assign"><const>rgb</const></edit>
     </match>
 </fontconfig>
 EOF
+                    echo "CREATED_FONTCONFIG: $app_fonts_conf" >> "$LOG_FILE"
                     log_info "FontConfig created for Snap app $app_id at $app_fonts_conf."
                 fi
             done
         else
-            log_info "No Snap apps detected in $snap_config_dir."
+            log_info "No Snap apps detected in $SNAP_CONFIG_DIR."
         fi
     else
         log_info "Snap not installed. Skipping Snap font installation."
@@ -232,43 +249,43 @@ verify_fonts() {
     else
         log_warning "Noto Sans Hebrew not found. Attempting to reinstall noto-fonts..."
         sudo pacman -S --needed noto-fonts || log_error "Failed to reinstall noto-fonts."
+        echo "INSTALLED_PACKAGE: noto-fonts" >> "$LOG_FILE"
     fi
     if fc-list | grep -qi "Arial"; then
         log_info "Arial found."
     else
         log_warning "Arial not found. Attempting to reinstall ttf-ms-fonts..."
         yay -S --needed ttf-ms-fonts || log_error "Failed to reinstall ttf-ms-fonts."
+        echo "INSTALLED_PACKAGE: ttf-ms-fonts" >> "$LOG_FILE"
     fi
 
-    if [ -d "$HOME/.local/share/fonts" ]; then
+    if [ -d "$FONT_DIR" ]; then
         log_info "Verifying Flatpak/Snap font installation..."
-        if ls "$HOME/.local/share/fonts" | grep -qi "NotoSansHebrew"; then
+        if ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
             log_info "Noto Sans Hebrew found in Flatpak/Snap fonts."
         else
             log_warning "Noto Sans Hebrew not found in Flatpak/Snap fonts. Re-copying..."
-            cp -r /usr/share/fonts/noto/* "$HOME/.local/share/fonts/" 2>/dev/null || log_warning "Failed to re-copy Noto Fonts."
-            fc-cache -fv "$HOME/.local/share/fonts" || log_warning "Failed to refresh Flatpak/Snap font cache."
+            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Failed to re-copy Noto Fonts."
+            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
+            fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Flatpak/Snap font cache."
         fi
     fi
 }
 
 create_system_fontconfig() {
-    local fontconfig_dir="$HOME/.config/fontconfig"
-    local fontconfig_file="$fontconfig_dir/fonts.conf"
-
     log_info "Checking for existing system-wide FontConfig configuration..."
-    if [ -f "$fontconfig_file" ]; then
-        log_warning "Existing $fontconfig_file found. Backing it up..."
-        cp "$fontconfig_file" "$fontconfig_file.bak" || log_error "Failed to back up $fontconfig_file."
+    if [ -f "$SYSTEM_FONTCONFIG_FILE" ]; then
+        log_warning "Existing $SYSTEM_FONTCONFIG_FILE found. Backing it up..."
+        cp "$SYSTEM_FONTCONFIG_FILE" "$BACKUP_DIR/fonts.conf.$(date +%s)" || log_error "Failed to back up $SYSTEM_FONTCONFIG_FILE."
+        echo "BACKUP_FONTCONFIG: $SYSTEM_FONTCONFIG_FILE -> $BACKUP_DIR/fonts.conf.$(date +%s)" >> "$LOG_FILE"
     fi
 
     log_info "Creating system-wide FontConfig configuration for Hebrew fonts..."
-    mkdir -p "$fontconfig_dir" || log_error "Failed to create $fontconfig_dir."
-    cat << EOF > "$fontconfig_file"
+    mkdir -p "$SYSTEM_FONTCONFIG_DIR" || log_error "Failed to create $SYSTEM_FONTCONFIG_DIR."
+    cat << EOF > "$SYSTEM_FONTCONFIG_FILE"
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
-    <!-- Set preferred fonts for Hebrew -->
     <alias>
         <family>sans-serif</family>
         <prefer>
@@ -285,24 +302,16 @@ create_system_fontconfig() {
             <family>DejaVu Serif</family>
         </prefer>
     </alias>
-    <!-- Improve font rendering -->
     <match target="font">
-        <edit name="antialias" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hinting" mode="assign">
-            <bool>true</bool>
-        </edit>
-        <edit name="hintstyle" mode="assign">
-            <const>hintslight</const>
-        </edit>
-        <edit name="rgba" mode="assign">
-            <const>rgb</const>
-        </edit>
+        <edit name="antialias" mode="assign"><bool>true</bool></edit>
+        <edit name="hinting" mode="assign"><bool>true</bool></edit>
+        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+        <edit name="rgba" mode="assign"><const>rgb</const></edit>
     </match>
 </fontconfig>
 EOF
-    log_info "System-wide FontConfig configuration created at $fontconfig_file."
+    echo "CREATED_FONTCONFIG: $SYSTEM_FONTCONFIG_FILE" >> "$LOG_FILE"
+    log_info "System-wide FontConfig configuration created at $SYSTEM_FONTCONFIG_FILE."
 }
 
 refresh_font_cache() {
@@ -323,8 +332,8 @@ verify_font_selection() {
         log_warning "Check for conflicting FontConfig files in /etc/fonts/conf.d/ or ~/.config/fontconfig/conf.d/."
     fi
 
-    if [ -d "$HOME/.var/app" ]; then
-        for app_dir in "$HOME/.var/app"/*; do
+    if [ -d "$FLATPAK_CONFIG_DIR" ]; then
+        for app_dir in "$FLATPAK_CONFIG_DIR"/*; do
             if [ -d "$app_dir" ]; then
                 local app_id=$(basename "$app_dir")
                 log_info "Checking font selection for Flatpak app $app_id..."
@@ -337,8 +346,8 @@ verify_font_selection() {
         done
     fi
 
-    if [ -d "$HOME/snap" ]; then
-        for snap_app in "$HOME/snap"/*; do
+    if [ -d "$SNAP_CONFIG_DIR" ]; then
+        for snap_app in "$SNAP_CONFIG_DIR"/*; do
             if [ -d "$snap_app" ]; then
                 local app_id=$(basename "$snap_app")
                 local app_version_dir
@@ -358,7 +367,7 @@ verify_font_selection() {
 }
 
 reload_hyprland() {
-    if command -v hyprctl &>/dev/null && pgrep -x Hyprland >/dev/null; then
+    if command -v hyprctl >/dev/null 2>&1 && pgrep -x Hyprland >/dev/null; then
         log_info "Hyprland detected. Reloading Hyprland to apply font changes..."
         hyprctl reload || log_warning "Failed to reload Hyprland. Please log out and back in manually."
         log_info "Hyprland reloaded successfully."
@@ -382,6 +391,7 @@ main() {
     log_info "Hebrew font setup completed successfully!"
     log_info "Hebrew fonts should now work in browsers, Discord (Flatpak or native), Snap apps (e.g., Netflix), and other apps."
     log_info "If issues persist, share the output of 'fc-match sans-serif' and 'fc-list | grep -i hebrew'."
+    echo "LOGGED_ACTIONS: Completed fonts installation" >> "$LOG_FILE"
 }
 
 main
