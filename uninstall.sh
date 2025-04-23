@@ -20,6 +20,7 @@ EXTENSIONS_JSON="$FULL_PROFILE_DIR/extensions.json"
 FONT_DIR="$HOME/.local/share/fonts"
 SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
 SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
+DYNAMIC_BROWSER_LOG="$HOME/.dynamic_browser.log"
 
 [ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
 
@@ -86,14 +87,36 @@ while IFS=': ' read -r action details; do
                 echo "Skipping $KEYBINDINGS_CONF: no backup found"
             fi
             ;;
-        MODIFIED_USERPREFS)
-            backup_file=$(ls -t "$BACKUP_DIR/userprefs.conf."* 2>/dev/null | head -n 1)
-            if [ -n "$backup_file" ]; then
-                mv "$backup_file" "$USERPREFS_CONF" || { echo "Error: Failed to restore $USERPREFS_CONF"; exit 1; }
-                echo "Restored $USERPREFS_CONF from backup"
+        MODIFIED_CONFIG)
+            config_file=$(echo "$details" | cut -d' ' -f1)
+            backup_file=$(ls -t "$BACKUP_DIR/$(basename "$config_file")."* 2>/dev/null | head -n 1)
+            if [ -f "$config_file" ] && [ -n "$backup_file" ]; then
+                mv "$backup_file" "$config_file" || { echo "Error: Failed to restore $config_file"; exit 1; }
+                echo "Restored $config_file from backup"
                 ((reversed_actions++))
             else
-                echo "Skipping $USERPREFS_CONF: no backup found"
+                echo "Skipping $config_file: no backup or already restored"
+            fi
+            ;;
+        CREATED_CONFIG)
+            config_file="$details"
+            if [ -f "$config_file" ]; then
+                rm "$config_file" || { echo "Error: Failed to remove $config_file"; exit 1; }
+                echo "Removed $config_file"
+                ((reversed_actions++))
+            else
+                echo "Skipping $config_file: already removed"
+            fi
+            ;;
+        BACKUP_CONFIG)
+            config_file="${details%% -> *}"
+            backup_file="${details##* -> }"
+            if [ -f "$backup_file" ] && [ ! -f "$config_file" ]; then
+                mv "$backup_file" "$config_file" || { echo "Error: Failed to restore $config_file"; exit 1; }
+                echo "Restored $config_file from backup"
+                ((reversed_actions++))
+            else
+                echo "Skipping $config_file: already exists or no backup"
             fi
             ;;
         MODIFIED_FIREFOX_AUTOSCROLL)
@@ -231,6 +254,9 @@ done < "$LOG_FILE"
 [ "$reversed_actions" -eq 0 ] && echo "No actions to undo."
 
 rm -f "$LOG_FILE" && echo "Removed $LOG_FILE"
+if [ -f "$DYNAMIC_BROWSER_LOG" ]; then
+    rm -f "$DYNAMIC_BROWSER_LOG" && echo "Removed $DYNAMIC_BROWSER_LOG"
+fi
 if [ -d "$BACKUP_DIR" ] && [ -z "$(ls -A "$BACKUP_DIR")" ]; then
     rmdir "$BACKUP_DIR" && echo "Removed empty $BACKUP_DIR"
 fi
