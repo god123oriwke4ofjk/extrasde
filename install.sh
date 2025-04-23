@@ -27,7 +27,7 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session" >> "$LOG_FILE"
 
-if ! pacman -Qs jq >/dev/null 2>&1; tthen
+if ! pacman -Qs jq >/dev/null 2>&1; then
     sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
     echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
     echo "Installed jq"
