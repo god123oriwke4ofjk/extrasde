@@ -1,20 +1,12 @@
 #!/bin/bash
 
-# Script to set up Hebrew fonts on Arch Linux (Hyprland or other environments)
-# Installs Noto Fonts and Microsoft fonts for system, Flatpak, and Snap apps,
-# configures FontConfig, refreshes caches, and reloads Hyprland if necessary
-# Includes checks for fresh installs and existing configurations
-
-# Exit on error
 set -e
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
-# Log functions
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
@@ -28,22 +20,18 @@ log_error() {
     exit 1
 }
 
-# Check if running as root
 if [ "$EUID" -eq 0 ]; then
     log_error "This script should not be run as root. Run as a regular user."
 fi
 
-# Check if on Arch Linux
 if ! grep -qi "arch" /etc/os-release; then
     log_error "This script is designed for Arch Linux. Exiting."
 fi
 
-# Check if pacman is available
 if ! command -v pacman &>/dev/null; then
     log_error "pacman not found. This script requires Arch Linux's package manager."
 fi
 
-# Check and install yay (AUR helper) if not present
 install_yay() {
     if ! command -v yay &>/dev/null; then
         log_info "Installing yay (AUR helper)..."
@@ -59,7 +47,6 @@ install_yay() {
     fi
 }
 
-# Install system-wide fonts
 install_system_fonts() {
     log_info "Installing system-wide Hebrew-supporting fonts (noto-fonts, ttf-ms-fonts)..."
     sudo pacman -S --needed noto-fonts || log_error "Failed to install noto-fonts."
@@ -67,26 +54,21 @@ install_system_fonts() {
     log_info "System-wide fonts installed successfully."
 }
 
-# Install fonts for Flatpak apps
 install_flatpak_fonts() {
     if command -v flatpak &>/dev/null; then
         log_info "Flatpak detected. Installing fonts for Flatpak apps..."
-        # Copy system fonts to Flatpak's user font directory
         local flatpak_font_dir="$HOME/.local/share/fonts"
         mkdir -p "$flatpak_font_dir" || log_error "Failed to create $flatpak_font_dir."
         
-        # Copy Noto Fonts and Microsoft fonts to Flatpak font directory
         log_info "Copying Noto Fonts to $flatpak_font_dir..."
         cp -r /usr/share/fonts/noto/* "$flatpak_font_dir/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
         
         log_info "Copying Microsoft Fonts to $flatpak_font_dir..."
         cp -r /usr/share/fonts/TTF/* "$flatpak_font_dir/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
         
-        # Refresh Flatpak font cache
         log_info "Refreshing Flatpak font cache..."
         fc-cache -fv "$flatpak_font_dir" || log_warning "Failed to refresh Flatpak font cache."
         
-        # Create Flatpak-specific FontConfig configuration
         local flatpak_config_dir="$HOME/.var/app"
         if [ -d "$flatpak_config_dir" ]; then
             for app_dir in "$flatpak_config_dir"/*; do
@@ -154,22 +136,18 @@ EOF
     fi
 }
 
-# Install fonts for Snap apps
 install_snap_fonts() {
     if command -v snap &>/dev/null; then
         log_info "Snap detected. Installing fonts for Snap apps..."
-        # Copy system fonts to Snap's user font directory
         local snap_font_dir="$HOME/.local/share/fonts"
         mkdir -p "$snap_font_dir" || log_error "Failed to create $snap_font_dir."
         
-        # Copy Noto Fonts and Microsoft fonts to Snap font directory
         log_info "Copying Noto Fonts to $snap_font_dir..."
         cp -r /usr/share/fonts/noto/* "$snap_font_dir/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
         
         log_info "Copying Microsoft Fonts to $snap_font_dir..."
         cp -r /usr/share/fonts/TTF/* "$snap_font_dir/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
         
-        # Refresh Snap font cache
         log_info "Refreshing Snap font cache..."
         fc-cache -fv "$snap_font_dir" || log_warning "Failed to refresh Snap font cache."
         
@@ -247,7 +225,6 @@ EOF
     fi
 }
 
-# Verify font installation
 verify_fonts() {
     log_info "Verifying system-wide Hebrew font installation..."
     if fc-list | grep -qi "Noto Sans Hebrew"; then
@@ -263,7 +240,6 @@ verify_fonts() {
         yay -S --needed ttf-ms-fonts || log_error "Failed to reinstall ttf-ms-fonts."
     fi
 
-    # Verify Flatpak/Snap fonts
     if [ -d "$HOME/.local/share/fonts" ]; then
         log_info "Verifying Flatpak/Snap font installation..."
         if ls "$HOME/.local/share/fonts" | grep -qi "NotoSansHebrew"; then
@@ -276,7 +252,6 @@ verify_fonts() {
     fi
 }
 
-# Create system-wide FontConfig configuration
 create_system_fontconfig() {
     local fontconfig_dir="$HOME/.config/fontconfig"
     local fontconfig_file="$fontconfig_dir/fonts.conf"
@@ -330,14 +305,12 @@ EOF
     log_info "System-wide FontConfig configuration created at $fontconfig_file."
 }
 
-# Refresh system-wide font cache
 refresh_font_cache() {
     log_info "Refreshing system-wide font cache..."
     fc-cache -fv || log_error "Failed to refresh system-wide font cache."
     log_info "System-wide font cache refreshed successfully."
 }
 
-# Verify font selection
 verify_font_selection() {
     log_info "Verifying system-wide font selection..."
     local selected_font
@@ -350,7 +323,6 @@ verify_font_selection() {
         log_warning "Check for conflicting FontConfig files in /etc/fonts/conf.d/ or ~/.config/fontconfig/conf.d/."
     fi
 
-    # Verify Flatpak font selection
     if [ -d "$HOME/.var/app" ]; then
         for app_dir in "$HOME/.var/app"/*; do
             if [ -d "$app_dir" ]; then
@@ -365,7 +337,6 @@ verify_font_selection() {
         done
     fi
 
-    # Verify Snap font selection
     if [ -d "$HOME/snap" ]; then
         for snap_app in "$HOME/snap"/*; do
             if [ -d "$snap_app" ]; then
@@ -386,7 +357,6 @@ verify_font_selection() {
     fi
 }
 
-# Reload Hyprland if necessary
 reload_hyprland() {
     if command -v hyprctl &>/dev/null && pgrep -x Hyprland >/dev/null; then
         log_info "Hyprland detected. Reloading Hyprland to apply font changes..."
@@ -398,7 +368,6 @@ reload_hyprland() {
     fi
 }
 
-# Main function
 main() {
     log_info "Starting Hebrew font setup for Arch Linux (system, Flatpak, Snap)..."
     install_yay
@@ -415,7 +384,6 @@ main() {
     log_info "If issues persist, share the output of 'fc-match sans-serif' and 'fc-list | grep -i hebrew'."
 }
 
-# Run main function
 main
 
 exit 0
