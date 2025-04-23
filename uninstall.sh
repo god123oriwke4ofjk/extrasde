@@ -9,12 +9,14 @@ KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
+FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2 2>/dev/null)
 FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
+USER_DIR="$HOME/.local/share/applications"
+EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 
 [ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
 
-if pgrep firefox > /dev/null; then
+if pgrep firefox >/dev/null; then
     echo "Error: Firefox is running. Please close Firefox before undoing autoscrolling settings."
     exit 1
 fi
@@ -97,6 +99,66 @@ while IFS=': ' read -r action details; do
                 echo "Skipping $FIREFOX_PREFS_FILE: no backup found"
             fi
             ;;
+        INSTALLED_PACKAGE)
+            package="$details"
+            if pacman -Qs "$package" >/dev/null 2>&1; then
+                sudo pacman -Rns --noconfirm "$package" || { echo "Error: Failed to remove $package"; exit 1; }
+                echo "Removed package $package"
+                ((reversed_actions++))
+            else
+                echo "Skipping $package: not installed"
+            fi
+            ;;
+        ADDED_FLATHUB)
+            if flatpak --user remotes | grep -q flathub; then
+                flatpak --user remote-delete flathub || { echo "Error: Failed to remove flathub repository"; exit 1; }
+                echo "Removed flathub repository"
+                ((reversed_actions++))
+            else
+                echo "Skipping flathub: not present"
+            fi
+            ;;
+        INSTALLED_FLATPAK)
+            flatpak="$details"
+            if flatpak list | grep -q "$flatpak"; then
+                flatpak uninstall --user -y "$flatpak" || { echo "Error: Failed to uninstall $flatpak"; exit 1; }
+                echo "Uninstalled flatpak $flatpak"
+                ((reversed_actions++))
+            else
+                echo "Skipping $flatpak: not installed"
+            fi
+            ;;
+        CREATED_DESKTOP)
+            desktop_path="${details##* -> }"
+            if [ -f "$desktop_path" ]; then
+                rm "$desktop_path" || { echo "Error: Failed to remove $desktop_path"; exit 1; }
+                echo "Removed $desktop_path"
+                ((reversed_actions++))
+            else
+                echo "Skipping $desktop_path: already removed"
+            fi
+            ;;
+        MODIFIED_DESKTOP)
+            desktop_file=$(echo "$details" | cut -d' ' -f1)
+            backup_file=$(ls -t "$BACKUP_DIR/$desktop_file."* 2>/dev/null | head -n 1)
+            if [ -f "$USER_DIR/$desktop_file" ] && [ -n "$backup_file" ]; then
+                mv "$backup_file" "$USER_DIR/$desktop_file" || { echo "Error: Failed to restore $USER_DIR/$desktop_file"; exit 1; }
+                echo "Restored $USER_DIR/$desktop_file from backup"
+                ((reversed_actions++))
+            else
+                echo "Skipping $USER_DIR/$desktop_file: no backup or already restored"
+            fi
+            ;;
+        CREATED_EXTENSION)
+            extension_path="$details"
+            if [ -d "$extension_path" ]; then
+                rm -rf "$extension_path" || { echo "Error: Failed to remove $extension_path"; exit 1; }
+                echo "Removed $extension_path"
+                ((reversed_actions++))
+            else
+                echo "Skipping $extension_path: already removed"
+            fi
+            ;;
     esac
 done < "$LOG_FILE"
 
@@ -113,6 +175,14 @@ fi
 
 if [ -d "$ICON_DIR" ] && [ -z "$(ls -A "$ICON_DIR")" ]; then
     rmdir "$ICON_DIR" && echo "Removed empty $ICON_DIR"
+fi
+
+if [ -d "$USER_DIR" ] && [ -z "$(ls -A "$USER_DIR")" ]; then
+    rmdir "$USER_DIR" && echo "Removed empty $USER_DIR"
+fi
+
+if [ -d "$HOME/.config/brave-extensions" ] && [ -z "$(ls -A "$HOME/.config/brave-extensions")" ]; then
+    rmdir "$HOME/.config/brave-extensions" && echo "Removed empty $HOME/.config/brave-extensions"
 fi
 
 echo "Undo completed successfully."
