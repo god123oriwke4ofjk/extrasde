@@ -1,5 +1,8 @@
 #!/bin/bash
 
+scrDir=\$(dirname \"\$(realpath \"\$0\")\") 
+source \"\$scrDir/globalcontrol.sh\" ||
+
 VPN_DIR="$HOME/.vpngate"
 STATE_FILE="$VPN_DIR/vpn_state"
 CONFIG_FILE="$VPN_DIR/vpngate.ovpn"
