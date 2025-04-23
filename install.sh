@@ -12,6 +12,9 @@ BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
 FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
 
+command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
+ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
+
 [ -z "$FIREFOX_PROFILE_DIR" ] && { echo "Error: Could not locate Firefox profile directory."; exit 1; }
 [ ! -f "$FIREFOX_PREFS_FILE" ] && { echo "Error: Firefox prefs.js not found at $FIREFOX_PREFS_FILE."; exit 1; }
 
