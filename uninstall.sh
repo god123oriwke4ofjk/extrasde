@@ -13,6 +13,7 @@ BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
 PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
+SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 
 # Initialize undo log
 UNDO_LOG="/home/$USER/.local/lib/hyde/undo.log"
@@ -31,6 +32,30 @@ check_file() {
     [ -f "$file" ] && [ -s "$file" ] && return 0
     return 1
 }
+
+# Revert sudoers changes
+if grep -q -E "CREATED_SUDOERS:|MODIFIED_SUDOERS:" "$LOG_FILE"; then
+    if check_file "$SUDOERS_FILE"; then
+        echo "Removing sudoers file: $SUDOERS_FILE"
+        sudo rm -f "$SUDOERS_FILE" || { echo "Error: Failed to remove $SUDOERS_FILE"; exit 1; }
+        echo "UNDO: Removed $SUDOERS_FILE" >> "$UNDO_LOG"
+    fi
+    # Restore backed-up sudoers if exists
+    backup_file=$(ls -t "$BACKUP_DIR/sudoers_hyde-vpn."* 2>/dev/null | head -n1)
+    if check_file "$backup_file"; then
+        echo "Restoring backed-up sudoers: $backup_file to $SUDOERS_FILE"
+        sudo cp "$backup_file" "$SUDOERS_FILE" || { echo "Error: Failed to restore $SUDOERS_FILE"; exit 1; }
+        sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+        if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+            echo "Error: Restored sudoers file is invalid"
+            sudo rm -f "$SUDOERS_FILE"
+            exit 1
+        fi
+        echo "UNDO: Restored $SUDOERS_FILE from $backup_file" >> "$UNDO_LOG"
+    fi
+else
+    echo "Skipping: No sudoers modifications found in log."
+fi
 
 # Revert installed packages
 grep "INSTALLED_PACKAGE:" "$LOG_FILE" | while read -r line; do
@@ -52,7 +77,7 @@ grep -E "CREATED_SCRIPT:|REPLACED_SCRIPT:" "$LOG_FILE" | while read -r line; do
         echo "Skipping: Script $script_path already removed or never created."
     fi
     # Restore backed-up script if exists
-    backup_file=$(grep "REPLACED_SCRIPT:.*$script_name" "$LOG_FILE" | tail -n1 | grep -o "$BACKUP_DIR/$script_name\.[0-9]*")
+    backup_file=$(ls -t "$BACKUP_DIR/$script_name."* 2>/dev/null | head -n1)
     if check_file "$backup_file"; then
         echo "Restoring backed-up script: $backup_file to $script_path"
         cp "$backup_file" "$script_path" || { echo "Error: Failed to restore $script_path"; exit 1; }
@@ -73,7 +98,7 @@ grep -E "MOVED_SVG:|REPLACED_SVG:" "$LOG_FILE" | while read -r line; do
         echo "Skipping: SVG $svg_file already removed or never moved."
     fi
     # Restore backed-up SVG if exists
-    backup_file=$(grep "REPLACED_SVG:.*$svg_name" "$LOG_FILE" | tail -n1 | grep -o "$BACKUP_DIR/$svg_name\.[0-9]*")
+    backup_file=$(ls -t "$BACKUP_DIR/$svg_name."* 2>/dev/null | head -n1)
     if check_file "$backup_file"; then
         echo "Restoring backed-up SVG: $backup_file to $svg_file"
         cp "$backup_file" "$svg_file" || { echo "Error: Failed to restore $svg_file"; exit 1; }
