@@ -83,44 +83,50 @@ if [ -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
 fi
 
 if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE" || { echo "Error: Failed to clean invalid extension flag"; exit 1; }
-    echo "MODIFIED_DESKTOP: $BRAVE_DESKTOP_FILE -> Removed invalid --load-extension flag" >> "$LOG_FILE"
+    sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE"
     echo "Removed invalid --load-extension flag from $BRAVE_DESKTOP_FILE"
 fi
 
-if [ -d "$EXTENSION_DIR" ]; then
-    rm -rf "$EXTENSION_DIR" || { echo "Error: Failed to remove $EXTENSION_DIR"; exit 1; }
+if [[ -d "$EXTENSION_DIR" ]]; then
+    rm -rf "$EXTENSION_DIR"
     echo "Removed invalid extension directory $EXTENSION_DIR"
 fi
 
 if grep -q -- "$ARGUMENT" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    echo "Skipping: $ARGUMENT already present in $BRAVE_DESKTOP_FILE"
+    echo "The $ARGUMENT is already present in the Exec line for Brave"
 else
-    sed -i "/^Exec=/ s|$| $ARGUMENT|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || { echo "Error: Failed to modify Exec line in $BRAVE_DESKTOP_FILE"; exit 1; }
-    echo "MODIFIED_DESKTOP: $BRAVE_DESKTOP_FILE -> Added $ARGUMENT" >> "$LOG_FILE"
-    echo "Added $ARGUMENT to $BRAVE_DESKTOP_FILE"
+    sed -i "/^Exec=/ s|$| $ARGUMENT|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to modify Exec line in $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added $ARGUMENT to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
     echo "New Exec line:"
     grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
 fi
 
-if [ ! -d "$EXTENSION_DIR" ] || [ ! -f "$EXTENSION_DIR/manifest.json" ]; then
-    mkdir -p "$EXTENSION_DIR" || { echo "Error: Failed to create $EXTENSION_DIR"; exit 1; }
-    wget -q --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL" || { echo "Error: Failed to download extension from $EXTENSION_URL"; exit 1; }
-    unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR" || { echo "Error: Failed to unzip extension"; exit 1; }
-    [ ! -f "$EXTENSION_DIR/manifest.json" ] && { echo "Error: Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)"; exit 1; }
-    rm -f /tmp/netflix-1080p.crx
-    echo "CREATED_EXTENSION: $EXTENSION_DIR" >> "$LOG_FILE"
-    echo "Installed Netflix 1080p extension to $EXTENSION_DIR"
-else
-    echo "Skipping: Netflix 1080p extension already installed"
+mkdir -p "$EXTENSION_DIR"
+wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to download extension from $EXTENSION_URL"
+    exit 1
 fi
+unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
+if [[ ! -f "$EXTENSION_DIR/manifest.json" ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)"
+    exit 1
+fi
+rm /tmp/netflix-1080p.crx
 
 if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    echo "Skipping: Extension already loaded in $BRAVE_DESKTOP_FILE"
+    echo "The extension is already loaded in the Exec line for Brave"
 else
-    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || { echo "Error: Failed to add extension to $BRAVE_DESKTOP_FILE"; exit 1; }
-    echo "MODIFIED_DESKTOP: $BRAVE_DESKTOP_FILE -> Added --load-extension=$EXTENSION_DIR" >> "$LOG_FILE"
-    echo "Added extension to $BRAVE_DESKTOP_FILE"
+    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to add extension to $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
     echo "New Exec line:"
     grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
 fi
