@@ -15,7 +15,6 @@ PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 SCRIPT_BASEDIR="$(dirname "$(realpath "$0")")"
 ICONS_SRC_DIR="$SCRIPT_BASEDIR/icons"
-KEYBINDS_SRC_DIR="$SCRIPT_BASEDIR/keybinds"
 
 # Validate system requirements
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
@@ -189,9 +188,8 @@ if [ ${#replace_files[@]} -gt 0 ]; then
 fi
 [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were moved."
 
-# Install scripts from keybinds/ directory or fallback to hardcoded
+# Install hardcoded scripts
 declare -A scripts
-# Hardcoded fallback scripts
 scripts["toggle-sleep.sh"]="\
 #!/bin/bash
 scrDir=\$(dirname \"\$(realpath \"\$0\")\") 
@@ -393,20 +391,6 @@ case \"\$1\" in
 esac
 "
 
-# Load scripts from keybinds/ directory
-if [ -d "$KEYBINDS_SRC_DIR" ]; then
-    for script_file in "$KEYBINDS_SRC_DIR"/*.sh; do
-        if [ -f "$script_file" ]; then
-            script_name=$(basename "$script_file")
-            scripts["$script_name"]=$(cat "$script_file")
-            echo "Loaded $script_name from $KEYBINDS_SRC_DIR"
-        fi
-    done
-else
-    echo "Warning: Keybinds directory $KEYBINDS_SRC_DIR not found. Using hardcoded scripts."
-fi
-
-# Install scripts
 for script_name in "${!scripts[@]}"; do
     script_path="$SCRIPT_DIR/$script_name"
     if [ -f "$script_path" ]; then
