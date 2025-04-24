@@ -9,15 +9,12 @@ KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2)
-FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
+FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
+PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
-
-[ -z "$FIREFOX_PROFILE_DIR" ] && { echo "Error: Could not locate Firefox profile directory."; exit 1; }
-[ ! -f "$FIREFOX_PREFS_FILE" ] && { echo "Error: Firefox prefs.js not found at $FIREFOX_PREFS_FILE."; exit 1; }
 
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
@@ -329,25 +326,49 @@ else
     echo "MODIFIED_USERPREFS: Set kb_layout = us,il" >> "$LOG_FILE"
 fi
 
-if pgrep firefox > /dev/null; then
-    echo "Error: Firefox is running. Please close Firefox before modifying autoscrolling settings."
-    exit 1
-fi
-
-if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
-    echo "Skipping: Firefox autoscrolling is already enabled."
-else
-    temp_file=$(mktemp)
-    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$(date +%s)" || { echo "Error: Failed to backup $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
-    if grep -q 'user_pref("general.autoScroll", false)' "$FIREFOX_PREFS_FILE"; then
-        sed 's/user_pref("general.autoScroll", false)/user_pref("general.autoScroll", true)/' "$FIREFOX_PREFS_FILE" > "$temp_file" || { echo "Error: Failed to modify $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
-    else
-        echo 'user_pref("general.autoScroll", true);' >> "$temp_file" || { echo "Error: Failed to append to $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
-        cat "$FIREFOX_PREFS_FILE" >> "$temp_file"
+if command -v firefox >/dev/null 2>&1; then
+    if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
+        echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
+        firefox --no-remote -CreateProfile default || { echo "Warning: Failed to create a new Firefox profile. Skipping autoscrolling."; }
+        echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
     fi
-    mv "$temp_file" "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to update $FIREFOX_PREFS_FILE"; rm -f "$temp_file"; exit 1; }
-    echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
-    echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+    if [ -f "$PROFILE_INI" ]; then
+        PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
+        if [ -z "$PROFILE_PATH" ]; then
+            PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$PROFILE_INI" | head -n1)
+        fi
+        if [ -n "$PROFILE_PATH" ]; then
+            FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
+            if [ -f "$FIREFOX_PREFS_FILE" ]; then
+                if pgrep firefox >/dev/null; then
+                    echo "Warning: Firefox is running. Please close Firefox to modify autoscrolling settings. Skipping."
+                else
+                    if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREF信用卡
+                    echo "Skipping: Firefox autoscrolling is already enabled."
+                else
+                    temp_file=$(mktemp)
+                    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$(date +%s)" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
+                    if grep -q 'user_pref("general.autoScroll", false)' "$FIREFOX_PREFS_FILE"; then
+                        sed 's/user_pref("general.autoScroll", false)/user_pref("general.autoScroll", true)/' "$FIREFOX_PREFS_FILE" > "$temp_file" || { echo "Warning: Failed to modify $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
+                    else
+                        echo 'user_pref("general.autoScroll", true);' >> "$temp_file" || { echo "Warning: Failed to append to $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
+                        cat "$FIREFOX_PREFS_FILE" >> "$temp_file"
+                    fi
+                    mv "$temp_file" "$FIREFOX_PREFS_FILE" || { echo "Warning: Failed to update $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
+                    echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
+                    echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+                fi
+            else
+                echo "Warning: Firefox prefs.js not found at $FIREFOX_PREFS_FILE. Skipping autoscrolling."
+            fi
+        else
+            echo "Warning: Could not find default profile in profiles.ini. Skipping autoscrolling."
+        fi
+    else
+        echo "Warning: profiles.ini not found at $PROFILE_INI. Skipping autoscrolling."
+    fi
+else
+    echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
 fi
 
 echo "Script execution completed successfully."
