@@ -3,294 +3,188 @@
 USER=${USER:-$(whoami)}
 [ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
 
+# Directories
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-FIREFOX_PROFILE_DIR=$(grep -E "^Path=" "$HOME/.mozilla/firefox/profiles.ini" | grep -v "default" | head -n 1 | cut -d'=' -f2 2>/dev/null)
-FIREFOX_PREFS_FILE="/home/$USER/.mozilla/firefox/$FIREFOX_PROFILE_DIR/prefs.js"
-USER_DIR="$HOME/.local/share/applications"
-EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
-FULL_PROFILE_DIR="$HOME/.mozilla/firefox/$FIREFOX_PROFILE_DIR"
-EXTENSIONS_DIR="$FULL_PROFILE_DIR/extensions"
-STAGING_DIR="$FULL_PROFILE_DIR/extensions.staging"
-EXTENSIONS_JSON="$FULL_PROFILE_DIR/extensions.json"
-FONT_DIR="$HOME/.local/share/fonts"
-SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
-SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
-DYNAMIC_BROWSER_LOG="$HOME/.dynamic_browser.log"
+FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
+PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
+DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 
-[ ! -f "$LOG_FILE" ] && { echo "Error: $LOG_FILE not found. Nothing to undo."; exit 1; }
+# Initialize undo log
+UNDO_LOG="/home/$USER/.local/lib/hyde/undo.log"
+touch "$UNDO_LOG" || { echo "Error: Failed to create $UNDO_LOG"; exit 1; }
+echo "[$(date)] New undo session" >> "$UNDO_LOG"
 
-if pgrep firefox >/dev/null; then
-    echo "Error: Firefox is running. Please close Firefox before undoing settings."
+# Check if log file exists
+if [ ! -f "$LOG_FILE" ]; then
+    echo "Error: Install log file $LOG_FILE not found. Nothing to undo."
     exit 1
 fi
 
-reversed_actions=0
+# Function to check if file exists and is non-empty
+check_file() {
+    local file="$1"
+    [ -f "$file" ] && [ -s "$file" ] && return 0
+    return 1
+}
 
-while IFS=': ' read -r action details; do
-    case "$action" in
-        CREATED_SCRIPT)
-            script_path="${details##* -> }"
-            if [ -f "$script_path" ]; then
-                rm "$script_path" || { echo "Error: Failed to remove $script_path"; exit 1; }
-                echo "Removed $script_path"
-                ((reversed_actions++))
-            else
-                echo "Skipping $script_path: already removed"
-            fi
-            ;;
-        REPLACED_SCRIPT)
-            script_path="${details##* -> }"
-            script_name=$(basename "$script_path")
-            backup_file=$(ls -t "$BACKUP_DIR/$script_name."* 2>/dev/null | head -n 1)
-            if [ -f "$script_path" ] && [ -n "$backup_file" ]; then
-                mv "$backup_file" "$script_path" || { echo "Error: Failed to restore $script_path"; exit 1; }
-                echo "Restored $script_path from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $script_path: no backup or already restored"
-            fi
-            ;;
-        MOVED_SVG)
-            svg_path="${details##* -> }"
-            if [ -f "$svg_path" ]; then
-                rm "$svg_path" || { echo "Error: Failed to remove $svg_path"; exit 1; }
-                echo "Removed $svg_path"
-                ((reversed_actions++))
-            else
-                echo "Skipping $svg_path: already removed"
-            fi
-            ;;
-        REPLACED_SVG)
-            svg_path="${details##* -> }"
-            svg_name=$(basename "$svg_path")
-            backup_file=$(ls -t "$BACKUP_DIR/$svg_name."* 2>/dev/null | head -n 1)
-            if [ -f "$svg_path" ] && [ -n "$backup_file" ]; then
-                mv "$backup_file" "$svg_path" || { echo "Error: Failed to restore $svg_path"; exit 1; }
-                echo "Restored $svg_path from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $svg_path: no backup or already restored"
-            fi
-            ;;
-        MODIFIED_KEYBINDINGS)
-            backup_file=$(ls -t "$BACKUP_DIR/keybindings.conf."* 2>/dev/null | head -n 1)
-            if [ -n "$backup_file" ]; then
-                mv "$backup_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to restore $KEYBINDINGS_CONF"; exit 1; }
-                echo "Restored $KEYBINDINGS_CONF from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $KEYBINDINGS_CONF: no backup found"
-            fi
-            ;;
-        MODIFIED_CONFIG)
-            config_file=$(echo "$details" | cut -d' ' -f1)
-            backup_file=$(ls -t "$BACKUP_DIR/$(basename "$config_file")."* 2>/dev/null | head -n 1)
-            if [ -f "$config_file" ] && [ -n "$backup_file" ]; then
-                mv "$backup_file" "$config_file" || { echo "Error: Failed to restore $config_file"; exit 1; }
-                echo "Restored $config_file from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $config_file: no backup or already restored"
-            fi
-            ;;
-        CREATED_CONFIG)
-            config_file="$details"
-            if [ -f "$config_file" ]; then
-                rm "$config_file" || { echo "Error: Failed to remove $config_file"; exit 1; }
-                echo "Removed $config_file"
-                ((reversed_actions++))
-            else
-                echo "Skipping $config_file: already removed"
-            fi
-            ;;
-        BACKUP_CONFIG)
-            config_file="${details%% -> *}"
-            backup_file="${details##* -> }"
-            if [ -f "$backup_file" ] && [ ! -f "$config_file" ]; then
-                mv "$backup_file" "$config_file" || { echo "Error: Failed to restore $config_file"; exit 1; }
-                echo "Restored $config_file from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $config_file: already exists or no backup"
-            fi
-            ;;
-        MODIFIED_FIREFOX_AUTOSCROLL)
-            backup_file=$(ls -t "$BACKUP_DIR/prefs.js."* 2>/dev/null | head -n 1)
-            if [ -n "$backup_file" ]; then
-                mv "$backup_file" "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to restore $FIREFOX_PREFS_FILE"; exit 1; }
-                echo "Restored $FIREFOX_PREFS_FILE from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $FIREFOX_PREFS_FILE: no backup found"
-            fi
-            ;;
-        INSTALLED_PACKAGE)
-            package="$details"
-            if pacman -Qs "$package" >/dev/null 2>&1; then
-                sudo pacman -Rns --noconfirm "$package" || { echo "Error: Failed to remove $package"; exit 1; }
-                echo "Removed package $package"
-                ((reversed_actions++))
-            else
-                echo "Skipping $package: not installed"
-            fi
-            ;;
-        ADDED_FLATHUB)
-            if flatpak --user remotes | grep -q flathub; then
-                flatpak --user remote-delete flathub || { echo "Error: Failed to remove flathub repository"; exit 1; }
-                echo "Removed flathub repository"
-                ((reversed_actions++))
-            else
-                echo "Skipping flathub: not present"
-            fi
-            ;;
-        INSTALLED_FLATPAK)
-            flatpak="$details"
-            if flatpak list | grep -q "$flatpak"; then
-                flatpak uninstall --user -y "$flatpak" || { echo "Error: Failed to uninstall $flatpak"; exit 1; }
-                echo "Uninstalled flatpak $flatpak"
-                ((reversed_actions++))
-            else
-                echo "Skipping $flatpak: not installed"
-            fi
-            ;;
-        CREATED_DESKTOP)
-            desktop_path="${details##* -> }"
-            if [ -f "$desktop_path" ]; then
-                rm "$desktop_path" || { echo "Error: Failed to remove $desktop_path"; exit 1; }
-                echo "Removed $desktop_path"
-                ((reversed_actions++))
-            else
-                echo "Skipping $desktop_path: already removed"
-            fi
-            ;;
-        MODIFIED_DESKTOP)
-            desktop_file=$(echo "$details" | cut -d' ' -f1)
-            backup_file=$(ls -t "$BACKUP_DIR/$desktop_file."* 2>/dev/null | head -n 1)
-            if [ -f "$USER_DIR/$desktop_file" ] && [ -n "$backup_file" ]; then
-                mv "$backup_file" "$USER_DIR/$desktop_file" || { echo "Error: Failed to restore $USER_DIR/$desktop_file"; exit 1; }
-                echo "Restored $USER_DIR/$desktop_file from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $USER_DIR/$desktop_file: no backup or already restored"
-            fi
-            ;;
-        CREATED_EXTENSION)
-            extension_path="$details"
-            if [ -d "$extension_path" ]; then
-                rm -rf "$extension_path" || { echo "Error: Failed to remove $extension_path"; exit 1; }
-                echo "Removed $extension_path"
-                ((reversed_actions++))
-            else
-                echo "Skipping $extension_path: already removed"
-            fi
-            ;;
-        INSTALLED_EXTENSION)
-            extension_path="${details##* -> }"
-            if [[ "$extension_path" == *.xpi ]]; then
-                if [ -f "$extension_path" ]; then
-                    rm "$extension_path" || { echo "Error: Failed to remove $extension_path"; exit 1; }
-                    echo "Removed $extension_path"
-                    ((reversed_actions++))
+# Revert installed packages
+grep "INSTALLED_PACKAGE:" "$LOG_FILE" | while read -r line; do
+    package=$(echo "$line" | cut -d' ' -f2-)
+    echo "Removing installed package: $package"
+    sudo pacman -Rns --noconfirm "$package" 2>/dev/null || echo "Warning: Failed to remove package $package"
+    echo "UNDO: Removed package $package" >> "$UNDO_LOG"
+done
+
+# Revert created or replaced scripts
+grep -E "CREATED_SCRIPT:|REPLACED_SCRIPT:" "$LOG_FILE" | while read -r line; do
+    script_path=$(echo "$line" | cut -d' ' -f3- | cut -d' ' -f3)
+    script_name=$(basename "$script_path")
+    if check_file "$script_path"; then
+        echo "Removing script: $script_path"
+        rm -f "$script_path" || { echo "Error: Failed to remove $script_path"; exit 1; }
+        echo "UNDO: Removed script $script_path" >> "$UNDO_LOG"
+    else
+        echo "Skipping: Script $script_path already removed or never created."
+    fi
+    # Restore backed-up script if exists
+    backup_file=$(grep "REPLACED_SCRIPT:.*$script_name" "$LOG_FILE" | tail -n1 | grep -o "$BACKUP_DIR/$script_name\.[0-9]*")
+    if check_file "$backup_file"; then
+        echo "Restoring backed-up script: $backup_file to $script_path"
+        cp "$backup_file" "$script_path" || { echo "Error: Failed to restore $script_path"; exit 1; }
+        chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+        echo "UNDO: Restored $script_path from $backup_file" >> "$UNDO_LOG"
+    fi
+done
+
+# Revert moved or replaced SVG files
+grep -E "MOVED_SVG:|REPLACED_SVG:" "$LOG_FILE" | while read -r line; do
+    svg_file=$(echo "$line" | cut -d' ' -f3- | cut -d' ' -f3)
+    svg_name=$(basename "$svg_file")
+    if check_file "$svg_file"; then
+        echo "Removing SVG: $svg_file"
+        rm -f "$svg_file" || { echo "Error: Failed to remove $svg_file"; exit 1; }
+        echo "UNDO: Removed SVG $svg_file" >> "$UNDO_LOG"
+    else
+        echo "Skipping: SVG $svg_file already removed or never moved."
+    fi
+    # Restore backed-up SVG if exists
+    backup_file=$(grep "REPLACED_SVG:.*$svg_name" "$LOG_FILE" | tail -n1 | grep -o "$BACKUP_DIR/$svg_name\.[0-9]*")
+    if check_file "$backup_file"; then
+        echo "Restoring backed-up SVG: $backup_file to $svg_file"
+        cp "$backup_file" "$svg_file" || { echo "Error: Failed to restore $svg_file"; exit 1; }
+        echo "UNDO: Restored $svg_file from $backup_file" >> "$UNDO_LOG"
+    fi
+done
+
+# Revert Firefox autoscrolling
+if grep -q "MODIFIED_FIREFOX_AUTOSCROLL:" "$LOG_FILE"; then
+    if [ -f "$PROFILE_INI" ]; then
+        PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
+        if [ -z "$PROFILE_PATH" ]; then
+            PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$PROFILE_INI" | head -n1)
+        fi
+        if [ -n "$PROFILE_PATH" ]; then
+            FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
+            if check_file "$FIREFOX_PREFS_FILE"; then
+                if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
+                    # Find the latest backup
+                    backup_file=$(ls -t "$BACKUP_DIR/prefs.js."* 2>/dev/null | head -n1)
+                    if check_file "$backup_file"; then
+                        echo "Restoring Firefox prefs.js: $backup_file to $FIREFOX_PREFS_FILE"
+                        pkill -9 firefox 2>/dev/null
+                        cp "$backup_file" "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to restore $FIREFOX_PREFS_FILE"; exit 1; }
+                        echo "UNDO: Restored $FIREFOX_PREFS_FILE from $backup_file" >> "$UNDO_LOG"
+                    else
+                        echo "Warning: No backup found for $FIREFOX_PREFS_FILE. Cannot revert autoscrolling."
+                    fi
                 else
-                    echo "Skipping $extension_path: already removed"
+                    echo "Skipping: Firefox autoscrolling not enabled in $FIREFOX_PREFS_FILE."
                 fi
-            elif [[ "$extension_path" == *extensions.json* ]]; then
-                backup_file=$(ls -t "$BACKUP_DIR/extensions.json."* 2>/dev/null | head -n 1)
-                if [ -n "$backup_file" ] && [ -f "$EXTENSIONS_JSON" ]; then
-                    mv "$backup_file" "$EXTENSIONS_JSON" || { echo "Error: Failed to restore $EXTENSIONS_JSON"; exit 1; }
-                    echo "Restored $EXTENSIONS_JSON from backup"
-                    ((reversed_actions++))
-                else
-                    echo "Skipping $EXTENSIONS_JSON: no backup or already restored"
-                fi
-            fi
-            ;;
-        BACKUP_JSON)
-            continue
-            ;;
-        CREATED_PROFILE)
-            echo "Skipping $details: Profile directory not removed to preserve user data"
-            ;;
-        COPIED_FONTS)
-            font_dir="${details##* -> }"
-            if [ -d "$font_dir" ]; then
-                rm -rf "$font_dir" || { echo "Error: Failed to remove $font_dir"; exit 1; }
-                echo "Removed $font_dir"
-                fc-cache -fv "$font_dir" 2>/dev/null || echo "Failed to refresh font cache after removal"
-                ((reversed_actions++))
             else
-                echo "Skipping $font_dir: already removed"
+                echo "Warning: Firefox prefs.js not found at $FIREFOX_PREFS_FILE. Skipping autoscrolling revert."
             fi
-            ;;
-        CREATED_FONTCONFIG)
-            fontconfig_file="$details"
-            if [ -f "$fontconfig_file" ]; then
-                rm "$fontconfig_file" || { echo "Error: Failed to remove $fontconfig_file"; exit 1; }
-                echo "Removed $fontconfig_file"
-                ((reversed_actions++))
-            else
-                echo "Skipping $fontconfig_file: already removed"
-            fi
-            ;;
-        BACKUP_FONTCONFIG)
-            fontconfig_file="${details%% -> *}"
-            backup_file="${details##* -> }"
-            if [ -f "$backup_file" ]; then
-                mv "$backup_file" "$fontconfig_file" || { echo "Error: Failed to restore $fontconfig_file"; exit 1; }
-                echo "Restored $fontconfig_file from backup"
-                ((reversed_actions++))
-            else
-                echo "Skipping $fontconfig_file: no backup found"
-            fi
-            ;;
-    esac
-done < "$LOG_FILE"
-
-[ "$reversed_actions" -eq 0 ] && echo "No actions to undo."
-
-rm -f "$LOG_FILE" && echo "Removed $LOG_FILE"
-if [ -f "$DYNAMIC_BROWSER_LOG" ]; then
-    rm -f "$DYNAMIC_BROWSER_LOG" && echo "Removed $DYNAMIC_BROWSER_LOG"
+        else
+            echo "Warning: Could not find default profile in profiles.ini. Skipping autoscrolling revert."
+        fi
+    else
+        echo "Warning: profiles.ini not found at $PROFILE_INI. Skipping autoscrolling revert."
+    fi
+else
+    echo "Skipping: No Firefox autoscrolling modifications found in log."
 fi
+
+# Revert userprefs.conf modifications
+if grep -q "MODIFIED_USERPREFS:" "$LOG_FILE"; then
+    backup_file=$(ls -t "$BACKUP_DIR/userprefs.conf."* 2>/dev/null | head -n1)
+    if check_file "$backup_file"; then
+        echo "Restoring userprefs.conf: $backup_file to $USERPREFS_CONF"
+        cp "$backup_file" "$USERPREFS_CONF" || { echo "Error: Failed to restore $USERPREFS_CONF"; exit 1; }
+        echo "UNDO: Restored $USERPREFS_CONF from $backup_file" >> "$UNDO_LOG"
+    else
+        echo "Warning: No backup found for $USERPREFS_CONF. Cannot revert modifications."
+    fi
+fi
+
+# Revert userprefs.conf creation
+if grep -q "CREATED_CONFIG:.*$USERPREFS_CONF" "$LOG_FILE"; then
+    if check_file "$USERPREFS_CONF"; then
+        echo "Removing created userprefs.conf: $USERPREFS_CONF"
+        rm -f "$USERPREFS_CONF" || { echo "Error: Failed to remove $USERPREFS_CONF"; exit 1; }
+        echo "UNDO: Removed $USERPREFS_CONF" >> "$UNDO_LOG"
+    else
+        echo "Skipping: $USERPREFS_CONF already removed or never created."
+    fi
+fi
+
+# Revert keybindings.conf modifications
+if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
+    backup_file=$(ls -t "$BACKUP_DIR/keybindings.conf."* 2>/dev/null | head -n1)
+    if check_file "$backup_file"; then
+        echo "Restoring keybindings.conf: $backup_file to $KEYBINDINGS_CONF"
+        cp "$backup_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to restore $KEYBINDINGS_CONF"; exit 1; }
+        echo "UNDO: Restored $KEYBINDINGS_CONF from $backup_file" >> "$UNDO_LOG"
+    else
+        echo "Warning: No backup found for $KEYBINDINGS_CONF. Attempting to remove added bindings."
+        temp_file=$(mktemp)
+        SLEEP_BIND_LINE="bindd = \$mainMod, I, \$d toggle sleep inhibition , exec, \$scrPath/toggle-sleep.sh # toggle sleep inhibition"
+        VPN_LINES="\$d=[\$ut|Vpn Commands]
+bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
+bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
+        awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" '
+            BEGIN { in_vpn=0 }
+            $0 == sleep_line { next }
+            $0 ~ /^\$d=\[\$ut\|Vpn Commands\]/ { in_vpn=1; next }
+            in_vpn && $0 ~ /^bindd = \$mainMod Alt, [VC],/ { next }
+            in_vpn && $0 !~ /^[[:space:]]*$/ { in_vpn=0 }
+            { print }
+        ' "$KEYBINDINGS_CONF" > "$temp_file"
+        mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; exit 1; }
+        echo "UNDO: Removed sleep and VPN bindings from $KEYBINDINGS_CONF" >> "$UNDO_LOG"
+    fi
+fi
+
+# Revert dynamic-browser.sh exec-once in userprefs.conf
+if grep -q "MODIFIED_CONFIG:.*exec-once=$DYNAMIC_BROWSER_SCRIPT" "$LOG_FILE"; then
+    if check_file "$USERPREFS_CONF"; then
+        temp_file=$(mktemp)
+        grep -v "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" > "$temp_file"
+        mv "$temp_file" "$USERPREFS_CONF" || { echo "Error: Failed to update $USERPREFS_CONF"; exit 1; }
+        echo "UNDO: Removed exec-once=$DYNAMIC_BROWSER_SCRIPT from $USERPREFS_CONF" >> "$UNDO_LOG"
+    else
+        echo "Skipping: $USERPREFS_CONF does not exist, no exec-once to remove."
+    fi
+fi
+
+# Clean up backup directory if empty
 if [ -d "$BACKUP_DIR" ] && [ -z "$(ls -A "$BACKUP_DIR")" ]; then
-    rmdir "$BACKUP_DIR" && echo "Removed empty $BACKUP_DIR"
+    rmdir "$BACKUP_DIR" && echo "Removed empty backup directory $BACKUP_DIR"
 fi
 
-if [ -d "$SCRIPT_DIR" ] && [ -z "$(ls -A "$SCRIPT_DIR")" ]; then
-    rmdir "$SCRIPT_DIR" && echo "Removed empty $SCRIPT_DIR"
-fi
-
-if [ -d "$ICON_DIR" ] && [ -z "$(ls -A "$ICON_DIR")" ]; then
-    rmdir "$ICON_DIR" && echo "Removed empty $ICON_DIR"
-fi
-
-if [ -d "$USER_DIR" ] && [ -z "$(ls -A "$USER_DIR")" ]; then
-    rmdir "$USER_DIR" && echo "Removed empty $USER_DIR"
-fi
-
-if [ -d "$HOME/.config/brave-extensions" ] && [ -z "$(ls -A "$HOME/.config/brave-extensions")" ]; then
-    rmdir "$HOME/.config/brave-extensions" && echo "Removed empty $HOME/.config/brave-extensions"
-fi
-
-if [ -d "$EXTENSIONS_DIR" ] && [ -z "$(ls -A "$EXTENSIONS_DIR")" ]; then
-    rmdir "$EXTENSIONS_DIR" && echo "Removed empty $EXTENSIONS_DIR"
-fi
-
-if [ -d "$STAGING_DIR" ] && [ -z "$(ls -A "$STAGING_DIR")" ]; then
-    rmdir "$STAGING_DIR" && echo "Removed empty $STAGING_DIR"
-fi
-
-if [ -d "$FONT_DIR" ] && [ -z "$(ls -A "$FONT_DIR")" ]; then
-    rmdir "$FONT_DIR" && echo "Removed empty $FONT_DIR"
-fi
-
-if [ -d "$SYSTEM_FONTCONFIG_DIR" ] && [ -z "$(ls -A "$SYSTEM_FONTCONFIG_DIR")" ]; then
-    rmdir "$SYSTEM_FONTCONFIG_DIR" && echo "Removed empty $SYSTEM_FONTCONFIG_DIR"
-fi
-
-echo "Undo completed successfully."
+# Preserve pre-existing files by not deleting $SCRIPT_DIR or $ICON_DIR
+echo "Undo completed. Pre-existing files in $SCRIPT_DIR and $ICON_DIR preserved."
+echo "UNDO: Completed undo process" >> "$UNDO_LOG"
