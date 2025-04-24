@@ -77,7 +77,7 @@ download_vpngate_config() {
     CONFIG_LINE=$(grep -v '*' "$API_CACHE" | grep -v '^#' | shuf -n 1)
     if [ -z "$CONFIG_LINE" ]; then
         echo "Error: No valid server configs found in API response."
-        notify-send -a "VPNGate" "VPN Error" "No valid server configs found"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" "VPNGate" "VPN Error" "No valid server configs found"
         exit 1
     fi
     SERVER_IP=$(echo "$CONFIG_LINE" | cut -d',' -f2)
@@ -86,13 +86,13 @@ download_vpngate_config() {
     BASE64_CONFIG=$(echo "$CONFIG_LINE" | cut -d',' -f15)
     if [ -z "$BASE64_CONFIG" ]; then
         echo "Error: No base64 config data found in API response."
-        notify-send -a "VPNGate" "VPN Error" "No base64 config data found"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" "VPNGate" "VPN Error" "No base64 config data found"
         exit 1
     fi
     echo "$BASE64_CONFIG" | base64 -d > "$CONFIG_FILE"
     if [ ! -s "$CONFIG_FILE" ]; then
         echo "Error: Decoded config is empty or invalid."
-        notify-send -a "VPNGate" "VPN Error" "Decoded config is empty"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" "VPNGate" "VPN Error" "Decoded config is empty"
         exit 1
     fi
     echo "Debug: Config file created at $CONFIG_FILE, size: $(wc -c < "$CONFIG_FILE") bytes"
@@ -120,10 +120,10 @@ start_vpn() {
         echo "VPN is running."
         echo "on" > "$STATE_FILE"
         LOCATION=$(get_server_location)
-        notify-send -a "VPNGate" -r "$NOTIFY_ID" "VPN Connected" "Connected to $LOCATION"
+        notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" "VPNGate" -r "$NOTIFY_ID" "VPN Connected" "$LOCATION"
     else
         echo "Failed to start VPN. Check OpenVPN logs."
-        notify-send -a "VPNGate" -r "$NOTIFY_ID" "VPN Error" "Failed to connect to VPN"
+        notify-send  -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\"  "$NOTIFY_ID" "VPN Error" "Failed to connect to VPN"
         exit 1
     fi
 }
@@ -137,12 +137,12 @@ stop_vpn() {
         echo "VPN stopped."
         echo "off" > "$STATE_FILE"
         if [ "$silent" != "silent" ]; then
-            notify-send -a "VPNGate" -r "$NOTIFY_ID" "VPN Disconnected" "VPN has been disconnected"
+            notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" "VPNGate" -r "$NOTIFY_ID" "VPN Disconnected"
         fi
     else
         echo "No VPN process found."
         if [ "$silent" != "silent" ]; then
-            notify-send -a "VPNGate" -r "$NOTIFY_ID" "VPN Error" "No VPN process found"
+            notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" "VPNGate" -r "$NOTIFY_ID" "VPN Error" "No VPN process found"
         fi
     fi
 }
