@@ -11,14 +11,12 @@ BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
-EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.2/netflix-1080p-1.32.2.crx"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
 VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
 VESKTOP_VENCORD_SETTINGS="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
-HEBREW_FONT="David"
-FONT_PACKAGE="ttf-david"
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
@@ -53,14 +51,6 @@ for pkg in wget unzip jq; do
         echo "Skipping: $pkg already installed"
     fi
 done
-
-if ! pacman -Qs "$FONT_PACKAGE" >/dev/null 2>&1 && ! yay -Qs "$FONT_PACKAGE" >/dev/null 2>&1; then
-    yay -S --noconfirm "$FONT_PACKAGE" || { echo "Error: Failed to install $FONT_PACKAGE"; exit 1; }
-    echo "INSTALLED_PACKAGE: $FONT_PACKAGE" >> "$LOG_FILE"
-    echo "Installed $FONT_PACKAGE"
-else
-    echo "Skipping: $FONT_PACKAGE already installed"
-fi
 
 if ! yay -Qs brave-bin >/dev/null 2>&1; then
     yay -S --noconfirm brave-bin || { echo "Error: Failed to install brave-bin"; exit 1; }
