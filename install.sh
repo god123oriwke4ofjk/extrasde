@@ -214,6 +214,14 @@ else
     inhibit_sleep
 fi
 "
+scripts["vpn-toggle.sh"]="\
+#!/bin/bash
+if [ \"\$1\" = \"change\" ]; then
+    notify-send -a \"HyDE Alert\" -r 91191 -t 800 \"VPN Server Changed\"
+else
+    notify-send -a \"HyDE Alert\" -r 91191 -t 800 \"VPN Toggled\"
+fi
+"
 
 for script_name in "${!scripts[@]}"; do
     script_path="$SCRIPT_DIR/$script_name"
@@ -257,9 +265,13 @@ fi
 
 [ ! -w "$KEYBINDINGS_CONF" ] && { echo "Error: $KEYBINDINGS_CONF is not writable."; exit 1; }
 
-BIND_LINE="bindd = \$mainMod, I, \$d toggle sleep inhibition , exec, \$scrPath/toggle-sleep.sh # toggle sleep inhibition"
-if grep -Fx "$BIND_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-    echo "Skipping: '$BIND_LINE' already exists in $KEYBINDINGS_CONF"
+SLEEP_BIND_LINE="bindd = \$mainMod, I, \$d toggle sleep inhibition , exec, \$scrPath/toggle-sleep.sh # toggle sleep inhibition"
+VPN_LINES="\
+\$d=[\$ut|Vpn Commands]
+bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
+bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
+if grep -Fx "$SLEEP_BIND_LINE" "$KEYBINDINGS_CONF" > /dev/null && grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
+    echo "Skipping: Sleep and VPN bindings already exist in $KEYBINDINGS_CONF"
 else
     UTILITIES_START='$d=[$ut]'
     SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
@@ -267,28 +279,30 @@ else
     cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$(date +%s)" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
     if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
         echo "Warning: Utilities section ($UTILITIES_START) not found in $KEYBINDINGS_CONF. Appending at the end."
-        echo -e "\n$UTILITIES_START\n$BIND_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo -e "\n$UTILITIES_START\n$SLEEP_BIND_LINE\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
     else
         if grep -q "$SCREEN_CAPTURE_START" "$KEYBINDINGS_CONF"; then
-            awk -v bind_line="$BIND_LINE" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
-                BEGIN { found_util=0 }
+            awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
+                BEGIN { found_util=0; added=0 }
                 $0 ~ util_start { found_util=1 }
-                $0 ~ sc_start && found_util { print bind_line "\n"; found_util=0 }
+                $0 ~ sleep_line && found_util && !added { print; print vpn_lines; added=1; next }
+                $0 ~ sc_start && found_util && !added { print vpn_lines "\n"; added=1 }
                 { print }
             ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
         else
-            awk -v bind_line="$BIND_LINE" -v util_start="$UTILITIES_START" '
-                BEGIN { found_util=0 }
+            awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" '
+                BEGIN { found_util=0; added=0 }
                 $0 ~ util_start { found_util=1 }
                 !found_util { print }
-                found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print bind_line "\n"; found_util=0; print; next }
-                found_util && /^$/ { print bind_line "\n"; found_util=0 }
+                found_util && $0 ~ sleep_line && !added { print; print vpn_lines; added=1; next }
+                found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
+                found_util && /^$/ && !added { print vpn_lines "\n"; added=1 }
                 { print }
             ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
         fi
         mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-        echo "Added '$BIND_LINE' to $KEYBINDINGS_CONF"
-        echo "MODIFIED_KEYBINDINGS: Added bindd line" >> "$LOG_FILE"
+        echo "Added sleep and VPN bindings to $KEYBINDINGS_CONF"
+        echo "MODIFIED_KEYBINDINGS: Added sleep and VPN bindings" >> "$LOG_FILE"
     fi
 fi
 
