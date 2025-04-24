@@ -25,12 +25,26 @@ show_animated_notification() {
     local pid_file="$2" 
     (
         while true; do
-            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/ "VPNGate" -r "$NOTIFY_ID" "$message." ""
-            sleep 0.5
-            notify-send -a "VPNGate" -r "$NOTIFY_ID" "$message.." ""
-            sleep 0.5
-            notify-send -a "VPNGate" -r "$NOTIFY_ID" "$message..." ""
-            sleep 0.5
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading3.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message." ""
+            sleep 0.175
+            
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading4.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message.." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message.." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message.." ""
+            sleep 0.175
+    
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading3.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message..." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading4.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message..." ""
+            sleep 0.175
+            notify-send -a \"Hyde Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading5.svg\" \"VPNGate\" -r "$NOTIFY_ID" "$message..." ""
+            sleep 0.175
         done
     ) &
     echo $! > "$pid_file"
@@ -49,7 +63,7 @@ download_vpngate_config() {
     mkdir -p "$VPN_DIR"
     if ! curl -s 'http://www.vpngate.net/api/iphone/' > "$API_CACHE"; then
         echo "Error: curl failed to fetch VPNGate API. Check network or API availability."
-        notify-send -a "VPNGate" "VPN Error" "Failed to fetch VPNGate API"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" "VPNGate" "VPN Error" "Failed to fetch VPNGate API"
         exit 1
     fi
     if [ ! -s "$API_CACHE" ]; then
