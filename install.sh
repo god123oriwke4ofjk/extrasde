@@ -31,6 +31,24 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session" >> "$LOG_FILE"
 
+# Delete backups from the previous run
+current_timestamp=$(date +%s)
+if [ -d "$BACKUP_DIR" ]; then
+    # Find the second-most-recent backup session marker
+    prev_backup=$(ls -t "$BACKUP_DIR/backup_session_"* 2>/dev/null | head -n2 | tail -n1)
+    if [ -n "$prev_backup" ]; then
+        prev_timestamp=$(basename "$prev_backup" | sed 's/backup_session_//')
+        echo "Removing backups from previous run ($prev_timestamp)..."
+        # Delete backups with the previous timestamp
+        find "$BACKUP_DIR" -type f -name "*.$prev_timestamp" -delete || { echo "Warning: Failed to delete some previous backups"; }
+        # Delete the previous session marker
+        rm -f "$prev_backup" || { echo "Warning: Failed to delete previous backup session marker"; }
+        echo "Removed previous backups."
+    else
+        echo "No previous backup session found. Skipping cleanup."
+    fi
+fi
+
 # Install jq if not present
 if ! pacman -Qs jq >/dev/null 2>&1; then
     sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
@@ -42,7 +60,7 @@ fi
 
 # Install dynamic-browser.sh
 if [ -f "$DYNAMIC_BROWSER_SCRIPT" ]; then
-    cp "$DYNAMIC_BROWSER_SCRIPT" "$BACKUP_DIR/dynamic-browser.sh.$(date +%s)" || { echo "Error: Failed to backup dynamic-browser.sh"; exit 1; }
+    cp "$DYNAMIC_BROWSER_SCRIPT" "$BACKUP_DIR/dynamic-browser.sh.$current_timestamp" || { echo "Error: Failed to backup dynamic-browser.sh"; exit 1; }
     echo "REPLACED_SCRIPT: dynamic-browser.sh -> $DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
     echo "Backed up and replaced dynamic-browser.sh"
 else
@@ -127,8 +145,8 @@ echo "Made dynamic-browser.sh executable"
 
 # Configure dynamic-browser.sh in userprefs.conf
 if [ -f "$USERPREFS_CONF" ]; then
-    cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$(date +%s)" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
-    echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$(date +%s)" >> "$LOG_FILE"
+    cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
+    echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
     echo "Backed up $USERPREFS_CONF"
 fi
 if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
@@ -176,7 +194,7 @@ if [ ${#replace_files[@]} -gt 0 ]; then
     if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
         for file in "${replace_files[@]}"; do
             target_file="$ICON_DIR/$(basename "$file")"
-            cp "$target_file" "$BACKUP_DIR/$(basename "$file").$(date +%s)" || { echo "Error: Failed to backup $target_file"; exit 1; }
+            cp "$target_file" "$BACKUP_DIR/$(basename "$file").$current_timestamp" || { echo "Error: Failed to backup $target_file"; exit 1; }
             mv "$file" "$ICON_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
             echo "Replaced $(basename "$file") in $ICON_DIR/"
             echo "REPLACED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
@@ -243,27 +261,19 @@ install_dependencies() {
 }
 show_animated_notification() {
     local message=\"\$1\"
-    local pid_file=\"\$2\" 
+    local pid_file=\"\$2\"
     (
         while true; do
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message.\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message.\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading3.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message.\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading4.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message..\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message..\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message..\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading3.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message...\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading4.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message...\" \"\"
-            sleep 0.175
-            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading5.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"\$message...\" \"\"
-            sleep 0.175
+            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message.\" \"\"
+            sleep 0.3
+            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message..\" \"\"
+            sleep 0.3
+            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading3.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message...\" \"\"
+            sleep 0.3
+            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading4.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message.\" \"\"
+            sleep 0.3
+            notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading5.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message..\" \"\"
+            sleep 0.3
         done
     ) &
     echo \$! > \"\$pid_file\"
@@ -280,12 +290,12 @@ download_vpngate_config() {
     mkdir -p \"\$VPN_DIR\"
     if ! curl -s 'http://www.vpngate.net/api/iphone/' > \"\$API_CACHE\"; then
         echo \"Error: curl failed to fetch VPNGate API. Check network or API availability.\"
-        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" \"VPN Error\" \"Failed to fetch VPNGate API\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"Failed to fetch VPNGate API\"
         exit 1
     fi
     if [ ! -s \"\$API_CACHE\" ]; then
         echo \"Error: API response is empty.\"
-        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" \"VPN Error\" \"API response is empty\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"API response is empty\"
         exit 1
     fi
     echo \"Debug: API response size: \$(wc -l < \"\$API_CACHE\") lines\"
@@ -294,22 +304,22 @@ download_vpngate_config() {
     CONFIG_LINE=\$(grep -v '*' \"\$API_CACHE\" | grep -v '^#' | shuf -n 1)
     if [ -z \"\$CONFIG_LINE\" ]; then
         echo \"Error: No valid server configs found in API response.\"
-        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" \"VPN Error\" \"No valid server configs found\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"No valid server configs found\"
         exit 1
     fi
     SERVER_IP=\$(echo \"\$CONFIG_LINE\" | cut -d',' -f2)
     COUNTRY=\$(echo \"\$CONFIG_LINE\" | cut -d',' -f7)
-    CITY=\$(echo \"\$CONFIG_LINE\" | cut -d',' -f6 | cut -d'_' -f1) 
+    CITY=\$(echo \"\$CONFIG_LINE\" | cut -d',' -f6 | cut -d'_' -f1)
     BASE64_CONFIG=\$(echo \"\$CONFIG_LINE\" | cut -d',' -f15)
     if [ -z \"\$BASE64_CONFIG\" ]; then
         echo \"Error: No base64 config data found in API response.\"
-        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" \"VPN Error\" \"No base64 config data found\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"No base64 config data found\"
         exit 1
     fi
     echo \"\$BASE64_CONFIG\" | base64 -d > \"\$CONFIG_FILE\"
     if [ ! -s \"\$CONFIG_FILE\" ]; then
         echo \"Error: Decoded config is empty or invalid.\"
-        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" \"VPN Error\" \"Decoded config is empty\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"Decoded config is empty\"
         exit 1
     fi
     echo \"Debug: Config file created at \$CONFIG_FILE, size: \$(wc -c < \"\$CONFIG_FILE\") bytes\"
@@ -328,22 +338,28 @@ get_server_location() {
 start_vpn() {
     echo \"Starting VPN...\"
     show_animated_notification \"VPN Starting\" \"\$VPN_DIR/anim.pid\"
-    sudo openvpn --config \"\$CONFIG_FILE\" --daemon --writepid \"\$VPN_DIR/vpn.pid\"
-    sleep 5 
+    echo \"Debug: Running openvpn --config \$CONFIG_FILE --daemon --writepid \$VPN_DIR/vpn.pid\"
+    if ! sudo openvpn --config \"\$CONFIG_FILE\" --daemon --writepid \"\$VPN_DIR/vpn.pid\"; then
+        echo \"Error: openvpn command failed.\"
+        stop_animated_notification \"\$VPN_DIR/anim.pid\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"openvpn command failed\"
+        exit 1
+    fi
+    sleep 5
     stop_animated_notification \"\$VPN_DIR/anim.pid\"
     if pgrep -F \"\$VPN_DIR/vpn.pid\" >/dev/null; then
         echo \"VPN is running.\"
         echo \"on\" > \"\$STATE_FILE\"
         LOCATION=\$(get_server_location)
-        notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"VPN Connected\" \"\$LOCATION\"
+        notify-send -a \"HyDE Alert\" -r \"\$NOTIFY_ID\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" \"VPNGate: VPN Connected\" \"\$LOCATION\"
     else
         echo \"Failed to start VPN. Check OpenVPN logs.\"
-        notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"VPN Error\" \"Failed to connect to VPN\"
+        notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"Failed to connect to VPN\"
         exit 1
     fi
 }
 stop_vpn() {
-    local silent=\"\$1\" 
+    local silent=\"\$1\"
     echo \"Stopping VPN...\"
     if [ -f \"\$VPN_DIR/vpn.pid\" ]; then
         sudo kill -SIGTERM \"\$(cat \"\$VPN_DIR/vpn.pid\")\"
@@ -351,12 +367,12 @@ stop_vpn() {
         echo \"VPN stopped.\"
         echo \"off\" > \"\$STATE_FILE\"
         if [ \"\$silent\" != \"silent\" ]; then
-            notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"VPN Disconnected\"
+            notify-send -a \"HyDE Alert\" -r \"\$NOTIFY_ID\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/vpn.svg\" \"VPNGate: VPN Disconnected\" \"\"
         fi
     else
         echo \"No VPN process found.\"
         if [ \"\$silent\" != \"silent\" ]; then
-            notify-send -a \"HyDE Alert\" -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate\" -r \"\$NOTIFY_ID\" \"VPN Error\" \"No VPN process found\"
+            notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"No VPN process found\"
         fi
     fi
 }
@@ -407,7 +423,7 @@ for script_name in "${!scripts[@]}"; do
             echo "$script_path has different content."
             read -p "Replace $script_path with new content? [y/N]: " replace_script
             if [[ "$replace_script" =~ ^[Yy]$ ]]; then
-                cp "$script_path" "$BACKUP_DIR/$script_name.$(date +%s)" || { echo "Error: Failed to backup $script_path"; exit 1; }
+                cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
                 echo "${scripts[$script_name]}" > "$script_path" || { echo "Error: Failed to write $script_path"; exit 1; }
                 chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
                 echo "Replaced and made $script_path executable."
@@ -445,7 +461,7 @@ else
     UTILITIES_START='$d=[$ut]'
     SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
     temp_file=$(mktemp)
-    cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$(date +%s)" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+    cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$current_timestamp" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
     if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
         echo "Warning: Utilities section ($UTILITIES_START) not found in $KEYBINDINGS_CONF. Appending at the end."
         echo -e "\n$UTILITIES_START\n$SLEEP_BIND_LINE\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
@@ -491,7 +507,7 @@ else
         echo "Skipping: 'kb_layout = us,il' already set in input block of $USERPREFS_CONF"
     else
         temp_file=$(mktemp)
-        cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$(date +%s)" || { echo "Error: Failed to backup $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+        cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
         if grep -q '^[[:space:]]*input[[:space:]]*{.*}' "$USERPREFS_CONF"; then
             awk '/^[[:space:]]*input[[:space:]]*{/ {print; print "    kb_layout = us,il"; next} 1' "$USERPREFS_CONF" > "$temp_file" || { echo "Error: Failed to modify $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
         else
@@ -528,7 +544,7 @@ if command -v firefox >/dev/null 2>&1; then
                 else
                     pkill -9 firefox 2>/dev/null
                     temp_file=$(mktemp)
-                    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$(date +%s)" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
+                    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$current_timestamp" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
                     if grep -q 'user_pref("general.autoScroll", false)' "$FIREFOX_PREFS_FILE"; then
                         sed 's/user_pref("general.autoScroll", false)/user_pref("general.autoScroll", true)/' "$FIREFOX_PREFS_FILE" > "$temp_file" || { echo "Warning: Failed to modify $FIREFOX_PREFS_FILE. Skipping autoscrolling."; rm -f "$temp_file"; continue; }
                     else
@@ -551,5 +567,9 @@ if command -v firefox >/dev/null 2>&1; then
 else
     echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
 fi
+
+# Create backup session marker
+touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
+echo "Created backup session marker for run at $current_timestamp"
 
 echo "Script execution completed successfully."
