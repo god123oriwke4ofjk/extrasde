@@ -1,419 +1,209 @@
 #!/bin/bash
 
-set -e
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
 USER=${USER:-$(whoami)}
-[ -z "$USER" ] && { echo -e "${RED}[ERROR]${NC} Could not determine username."; exit 1; }
+[ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
 
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-FONT_DIR="$HOME/.local/share/fonts"
-SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
-SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
-FLATPAK_CONFIG_DIR="$HOME/.var/app"
-SNAP_CONFIG_DIR="$HOME/snap"
+BRAVE_DESKTOP_FILE="brave-browser.desktop"
+VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
+BRAVE_SOURCE_DIR="/usr/share/applications"
+USER_DIR="$HOME/.local/share/applications"
+VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
+ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
+EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
+EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
+VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
 VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
+VESKTOP_VENCORD_SETTINGS="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
 
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
+[ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
+
+mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
+mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
+touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
+echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
+
+if ! command -v yay >/dev/null 2>&1; then
+    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
+    git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
+    cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
+    makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
+    cd - || exit 1
+    rm -rf /tmp/yay
+    echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
+    echo "Installed yay"
+else
+    echo "Skipping: yay already installed"
+fi
+
+for pkg in wget unzip jq; do
+    if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
+        sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+        echo "Installed $pkg"
+    else
+        echo "Skipping: $pkg already installed"
+    fi
+done
+
+if ! yay -Qs brave-bin >/dev/null 2>&1; then
+    yay -S --noconfirm brave-bin || { echo "Error: Failed to install brave-bin"; exit 1; }
+    echo "INSTALLED_PACKAGE: brave-bin" >> "$LOG_FILE"
+    echo "Installed brave-bin"
+else
+    echo "Skipping: brave-bin already installed"
+fi
+
+[ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
+
+mkdir -p "$USER_DIR" || { echo "Error: Failed to create $USER_DIR"; exit 1; }
+
+if [ ! -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
+    cp "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" "$USER_DIR/$BRAVE_DESKTOP_FILE" || { echo "Error: Failed to copy $BRAVE_DESKTOP_FILE to $USER_DIR"; exit 1; }
+    echo "CREATED_DESKTOP: $BRAVE_DESKTOP_FILE -> $USER_DIR/$BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    echo "Copied $BRAVE_DESKTOP_FILE to $USER_DIR"
+else
+    echo "Skipping: $BRAVE_DESKTOP_FILE already exists in $USER_DIR"
+fi
+
+if [ -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
+    if ! ls "$BACKUP_DIR/$BRAVE_DESKTOP_FILE".* >/dev/null 2>&1; then
+        cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" || { echo "Error: Failed to backup $BRAVE_DESKTOP_FILE"; exit 1; }
+        echo "BACKUP_DESKTOP: $BRAVE_DESKTOP_FILE -> $BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $BRAVE_DESKTOP_FILE"
+    else
+        echo "Skipping: Backup of $BRAVE_DESKTOP_FILE already exists"
+    fi
+fi
+
+if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "Removed invalid --load-extension flag from $BRAVE_DESKTOP_FILE"
+fi
+
+if [[ -d "$EXTENSION_DIR" ]]; then
+    rm -rf "$EXTENSION_DIR"
+    echo "Removed invalid extension directory $EXTENSION_DIR"
+fi
+
+if grep -q -- "$ARGUMENT" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    echo "The $ARGUMENT is already present in the Exec line for Brave"
+else
+    sed -i "/^Exec=/ s|$| $ARGUMENT|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to modify Exec line in $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added $ARGUMENT to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "New Exec line:"
+    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+fi
+
+mkdir -p "$EXTENSION_DIR"
+wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL"
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to download extension from $EXTENSION_URL"
     exit 1
-}
+fi
+unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR"
+if [[ ! -f "$EXTENSION_DIR/manifest.json" ]]; then
+    echo "Error: Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)"
+    exit 1
+fi
+rm /tmp/netflix-1080p.crx
 
-[ "$EUID" -eq 0 ] && log_error "This script should not be run as root. Run as a regular user."
-grep -qi "arch" /etc/os-release || log_error "This script is designed for Arch Linux."
-command -v pacman >/dev/null 2>&1 || log_error "pacman not found. This script requires Arch Linux's package manager."
-command -v fc-cache >/dev/null 2>&1 || log_error "fontconfig not found. Please install fontconfig."
-ping -c 1 archlinux.org >/dev/null 2>&1 || log_error "No internet connection."
+if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+    echo "The extension is already loaded in the Exec line for Brave"
+else
+    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to add extension to $BRAVE_DESKTOP_FILE"
+        exit 1
+    fi
+    echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+    echo "New Exec line:"
+    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+fi
 
-mkdir -p "$(dirname "$LOG_FILE")" || log_error "Failed to create $(dirname "$LOG_FILE")"
-mkdir -p "$BACKUP_DIR" || log_error "Failed to create $BACKUP_DIR"
-touch "$LOG_FILE" || log_error "Failed to create $LOG_FILE"
-echo "[$(date)] New installation session (fonts)" >> "$LOG_FILE"
+if ! command -v flatpak >/dev/null 2>&1; then
+    sudo pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
+    echo "INSTALLED_PACKAGE: flatpak" >> "$LOG_FILE"
+    echo "Installed flatpak"
+else
+    echo "Skipping: flatpak already installed"
+fi
 
-install_yay() {
-    if ! command -v yay >/dev/null 2>&1; then
-        log_info "Installing yay (AUR helper)..."
-        sudo pacman -S --needed git base-devel || log_error "Failed to install dependencies for yay."
-        git clone https://aur.archlinux.org/yay.git /tmp/yay || log_error "Failed to clone yay repository."
-        cd /tmp/yay
-        makepkg -si --noconfirm || log_error "Failed to build and install yay."
-        cd -
-        rm -rf /tmp/yay
-        echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
-        log_info "yay installed successfully."
+if ! flatpak --user remotes | grep -q flathub; then
+    flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo || { echo "Error: Failed to add flathub repository"; exit 1; }
+    echo "ADDED_FLATHUB: flathub" >> "$LOG_FILE"
+    echo "Added flathub repository"
+else
+    echo "Skipping: flathub repository already added"
+fi
+
+if ! flatpak list | grep -q dev.vencord.Vesktop; then
+    flatpak install --user -y flathub dev.vencord.Vesktop || { echo "Error: Failed to install Vesktop"; exit 1; }
+    echo "INSTALLED_FLATPAK: dev.vencord.Vesktop" >> "$LOG_FILE"
+    echo "Installed Vesktop"
+else
+    echo "Skipping: Vesktop already installed"
+fi
+
+[ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ] && { echo "Error: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR"; exit 1; }
+
+if [ ! -f "$USER_DIR/$VESKTOP_DESKTOP_FILE" ]; then
+    cp "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" "$USER_DIR/$VESKTOP_DESKTOP_FILE" || { echo "Error: Failed to copy $VESKTOP_DESKTOP_FILE to $USER_DIR"; exit 1; }
+    echo "CREATED_DESKTOP: $VESKTOP_DESKTOP_FILE -> $USER_DIR/$VESKTOP_DESKTOP_FILE" >> "$LOG_FILE"
+    echo "Copied $VESKTOP_DESKTOP_FILE to $USER_DIR"
+else
+    echo "Skipping: $VESKTOP_DESKTOP_FILE already exists in $USER_DIR"
+fi
+
+if [ -f "$USER_DIR/$VESKTOP_DESKTOP_FILE" ]; then
+    if ! ls "$BACKUP_DIR/$VESKTOP_DESKTOP_FILE".* >/dev/null 2>&1; then
+        cp "$USER_DIR/$VESKTOP_DESKTOP_FILE" "$BACKUP_DIR/$VESKTOP_DESKTOP_FILE.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_DESKTOP_FILE"; exit 1; }
+        echo "BACKUP_DESKTOP: $VESKTOP_DESKTOP_FILE -> $BACKUP_DIR/$VESKTOP_DESKTOP_FILE.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $VESKTOP_DESKTOP_FILE"
     else
-        log_info "yay is already installed."
+        echo "Skipping: Backup of $VESKTOP_DESKTOP_FILE already exists"
     fi
-}
+fi
 
-install_system_fonts() {
-    log_info "Installing system-wide Hebrew-supporting fonts (noto-fonts, ttf-ms-fonts)..."
-    if ! pacman -Qs noto-fonts >/dev/null 2>&1; then
-        sudo pacman -S --needed noto-fonts || log_error "Failed to install noto-fonts."
-        echo "INSTALLED_PACKAGE: noto-fonts" >> "$LOG_FILE"
-        log_info "noto-fonts installed."
+if grep -q -- "$ARGUMENT" "$USER_DIR/$VESKTOP_DESKTOP_FILE"; then
+    echo "Skipping: $ARGUMENT already present in $VESKTOP_DESKTOP_FILE"
+else
+    sed -i "/^Exec=/ s/@@u %U @@/$ARGUMENT @@u %U @@/" "$USER_DIR/$VESKTOP_DESKTOP_FILE" || { echo "Error: Failed to modify Exec line in $VESKTOP_DESKTOP_FILE"; exit 1; }
+    echo "MODIFIED_DESKTOP: $VESKTOP_DESKTOP_FILE -> Added $ARGUMENT" >> "$LOG_FILE"
+    echo "Added $ARGUMENT to $VESKTOP_DESKTOP_FILE"
+    echo "New Exec line:"
+    grep "^Exec=" "$USER_DIR/$VESKTOP_DESKTOP_FILE"
+fi
+
+if [ -f "$VESKTOP_CONFIG_FILE" ]; then
+    if ! jq '.hardwareAcceleration == false' "$VESKTOP_CONFIG_FILE" | grep -q true; then
+        cp "$VESKTOP_CONFIG_FILE" "$BACKUP_DIR/settings.json.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_CONFIG_FILE"; exit 1; }
+        echo "BACKUP_CONFIG: $VESKTOP_CONFIG_FILE -> $BACKUP_DIR/settings.json.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $VESKTOP_CONFIG_FILE"
+        jq '.hardwareAcceleration = false' "$VESKTOP_CONFIG_FILE" > temp.json && mv temp.json "$VESKTOP_CONFIG_FILE" || { echo "Error: Failed to disable hardware acceleration in $VESKTOP_CONFIG_FILE"; exit 1; }
+        echo "MODIFIED_CONFIG: $VESKTOP_CONFIG_FILE -> Disabled hardware acceleration" >> "$LOG_FILE"
+        echo "Disabled hardware acceleration in Vesktop"
     else
-        log_info "noto-fonts already installed."
+        echo "Skipping: Hardware acceleration already disabled in $VESKTOP_CONFIG_FILE"
     fi
-    if ! yay -Qs ttf-ms-fonts >/dev/null 2>&1; then
-        yay -S --needed ttf-ms-fonts || log_error "Failed to install ttf-ms-fonts."
-        echo "INSTALLED_PACKAGE: ttf-ms-fonts" >> "$LOG_FILE"
-        log_info "ttf-ms-fonts installed."
-    else
-        log_info "ttf-ms-fonts already installed."
-    fi
-}
+else
+    echo "Warning: $VESKTOP_CONFIG_FILE not found. Hardware acceleration not modified."
+    echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
+fi
 
-install_flatpak_fonts() {
-    if command -v flatpak >/dev/null 2>&1; then
-        log_info "Flatpak detected. Installing fonts for Flatpak apps..."
-        mkdir -p "$FONT_DIR" || log_error "Failed to create $FONT_DIR."
-
-       if flatpak list --app | grep -q "^$PACKAGE_ID"; then
-            log_info "Vesktop detected. Installing fonts for Vesktop..."
-
-            if [ -f "$VESKTOP_VENCORD_SETTINGS" ]; then
-                   if ! jq '.useQuickCss == true' "$VESKTOP_VENCORD_SETTINGS" | grep -q true; then
-                          cp "$VESKTOP_VENCORD_SETTINGS" "$BACKUP_DIR/vencord_settings.json.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_VENCORD_SETTINGS"; exit 1; }
-                          echo "BACKUP_CONFIG: $VESKTOP_VENCORD_SETTINGS -> $BACKUP_DIR/vencord_settings.json.$(date +%s)" >> "$LOG_FILE"
-                          echo "Created backup of $VESKTOP_VENCORD_SETTINGS"
-                          jq '.useQuickCss = true' "$VESKTOP_VENCORD_SETTINGS" > temp.json && mv temp.json "$VESKTOP_VENCORD_SETTINGS" || { echo "Error: Failed to enable useQuickCss in $VESKTOP_VENCORD_SETTINGS"; exit 1; }
-                          echo "MODIF IED_CONFIG: $VESKTOP_VENCORD_SETTINGS -> Enabled useQuickCss" >> "$LOG_FILE"
-                          echo "Enabled useQuickCss in Vencord settings"
-                  else
-                         echo "Skipping: useQuickCss already enabled in $VESKTOP_VENCORD_SETTINGS"
-                 fi
-          else
-                 echo "Warning: $VESKTOP_VENCORD_SETTINGS not found. Cannot ensure useQuickCss is enabled."
-              echo "LOGGED_WARNING: $VESKTOP_VENCORD_SETTINGS not found for useQuickCss" >> "$LOG_FILE"
-         fi
-               
-        if ! ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
-            log_info "Copying Noto Fonts to $FONT_DIR..."
-            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
-            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
-        else
-            log_info "Noto Fonts already present in $FONT_DIR."
-        fi
-        if ! ls "$FONT_DIR" | grep -qi "Arial"; then
-            log_info "Copying Microsoft Fonts to $FONT_DIR..."
-            cp -r /usr/share/fonts/TTF/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
-            echo "COPIED_FONTS: ttf-ms-fonts -> $FONT_DIR" >> "$LOG_FILE"
-        else
-            log_info "Microsoft Fonts already present in $FONT_DIR."
-        fi
-        
-        log_info "Refreshing Flatpak font cache..."
-        fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Flatpak font cache."
-        
-        if [ -d "$FLATPAK_CONFIG_DIR" ]; then
-            for app_dir in "$FLATPAK_CONFIG_DIR"/*; do
-                if [ -d "$app_dir" ]; then
-                    local app_id=$(basename "$app_dir")
-                    local app_fontconfig_dir="$app_dir/config/fontconfig"
-                    local app_fonts_conf="$app_fontconfig_dir/fonts.conf"
-                    
-                    log_info "Creating FontConfig for Flatpak app $app_id..."
-                    mkdir -p "$app_fontconfig_dir" || log_warning "Failed to create $app_fontconfig_dir."
-                    
-                    if [ -f "$app_fonts_conf" ]; then
-                        log_warning "Existing $app_fonts_conf found. Backing it up..."
-                        cp "$app_fonts_conf" "$BACKUP_DIR/flatpak-$app_id-fonts.conf.$(date +%s)" || log_warning "Failed to back up $app_fonts_conf."
-                        echo "BACKUP_FONTCONFIG: $app_fonts_conf -> $BACKUP_DIR/flatpak-$app_id-fonts.conf.$(date +%s)" >> "$LOG_FILE"
-                    fi
-                    
-                    cat << EOF > "$app_fonts_conf"
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-    <dir>$FONT_DIR</dir>
-    <alias>
-        <family>sans-serif</family>
-        <prefer>
-            <family>Noto Sans Hebrew</family>
-            <family>Arial</family>
-            <family>DejaVu Sans</family>
-        </prefer>
-    </alias>
-    <alias>
-        <family>serif</family>
-        <prefer>
-            <family>Noto Serif Hebrew</family>
-            <family>Times New Roman</family>
-            <family>DejaVu Serif</family>
-        </prefer>
-    </alias>
-    <match target="font">
-        <edit name="antialias" mode="assign"><bool>true</bool></edit>
-        <edit name="hinting" mode="assign"><bool>true</bool></edit>
-        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
-        <edit name="rgba" mode="assign"><const>rgb</const></edit>
-    </match>
-</fontconfig>
-EOF
-                    echo "CREATED_FONTCONFIG: $app_fonts_conf" >> "$LOG_FILE"
-                    log_info "FontConfig created for Flatpak app $app_id at $app_fonts_conf."
-                fi
-            done
-        else
-            log_info "No Flatpak apps detected in $FLATPAK_CONFIG_DIR."
-        fi
-    else
-        log_info "Flatpak not installed. Skipping Flatpak font installation."
-    fi
-}
-
-install_snap_fonts() {
-    if command -v snap >/dev/null 2>&1; then
-        log_info "Snap detected. Installing fonts for Snap apps..."
-        mkdir -p "$FONT_DIR" || log_error "Failed to create $FONT_DIR."
-        
-        if ! ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
-            log_info "Copying Noto Fonts to $FONT_DIR..."
-            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
-            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
-        else
-            log_info "Noto Fonts already present in $FONT_DIR."
-        fi
-        if ! ls "$FONT_DIR" | grep -qi "Arial"; then
-            log_info "Copying Microsoft Fonts to $FONT_DIR..."
-            cp -r /usr/share/fonts/TTF/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Microsoft Fonts could not be copied."
-            echo "COPIED_FONTS: ttf-ms-fonts -> $FONT_DIR" >> "$LOG_FILE"
-        else
-            log_info "Microsoft Fonts already present in $FONT_DIR."
-        fi
-        
-        log_info "Refreshing Snap font cache..."
-        fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Snap font cache."
-        
-        if [ -d "$SNAP_CONFIG_DIR" ]; then
-            for snap_app in "$SNAP_CONFIG_DIR"/*; do
-                if [ -d "$snap_app" ]; then
-                    local app_id=$(basename "$snap_app")
-                    local app_version_dir
-                    app_version_dir=$(readlink -f "$snap_app/current" 2>/dev/null)
-                    if [ -z "$app_version_dir" ]; then
-                        log_warning "No 'current' symlink found for Snap app $app_id. Skipping."
-                        continue
-                    fi
-                    local app_fontconfig_dir="$app_version_dir/.config/fontconfig"
-                    local app_fonts_conf="$app_fontconfig_dir/fonts.conf"
-                    
-                    log_info "Creating FontConfig for Snap app $app_id..."
-                    mkdir -p "$app_fontconfig_dir" || log_warning "Failed to create $app_fontconfig_dir."
-                    
-                    if [ -f "$app_fonts_conf" ]; then
-                        log_warning "Existing $app_fonts_conf found. Backing it up..."
-                        cp "$app_fonts_conf" "$BACKUP_DIR/snap-$app_id-fonts.conf.$(date +%s)" || log_warning "Failed to back up $app_fonts_conf."
-                        echo "BACKUP_FONTCONFIG: $app_fonts_conf -> $BACKUP_DIR/snap-$app_id-fonts.conf.$(date +%s)" >> "$LOG_FILE"
-                    fi
-                    
-                    cat << EOF > "$app_fonts_conf"
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-    <dir>$FONT_DIR</dir>
-    <alias>
-        <family>sans-serif</family>
-        <prefer>
-            <family>Noto Sans Hebrew</family>
-            <family>Arial</family>
-            <family>DejaVu Sans</family>
-        </prefer>
-    </alias>
-    <alias>
-        <family>serif</family>
-        <prefer>
-            <family>Noto Serif Hebrew</family>
-            <family>Times New Roman</family>
-            <family>DejaVu Serif</family>
-        </prefer>
-    </alias>
-    <match target="font">
-        <edit name="antialias" mode="assign"><bool>true</bool></edit>
-        <edit name="hinting" mode="assign"><bool>true</bool></edit>
-        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
-        <edit name="rgba" mode="assign"><const>rgb</const></edit>
-    </match>
-</fontconfig>
-EOF
-                    echo "CREATED_FONTCONFIG: $app_fonts_conf" >> "$LOG_FILE"
-                    log_info "FontConfig created for Snap app $app_id at $app_fonts_conf."
-                fi
-            done
-        else
-            log_info "No Snap apps detected in $SNAP_CONFIG_DIR."
-        fi
-    else
-        log_info "Snap not installed. Skipping Snap font installation."
-    fi
-}
-
-verify_fonts() {
-    log_info "Verifying system-wide Hebrew font installation..."
-    if fc-list | grep -qi "Noto Sans Hebrew"; then
-        log_info "Noto Sans Hebrew found."
-    else
-        log_warning "Noto Sans Hebrew not found. Attempting to reinstall noto-fonts..."
-        sudo pacman -S --needed noto-fonts || log_error "Failed to reinstall noto-fonts."
-        echo "INSTALLED_PACKAGE: noto-fonts" >> "$LOG_FILE"
-    fi
-    if fc-list | grep -qi "Arial"; then
-        log_info "Arial found."
-    else
-        log_warning "Arial not found. Attempting to reinstall ttf-ms-fonts..."
-        yay -S --needed ttf-ms-fonts || log_error "Failed to reinstall ttf-ms-fonts."
-        echo "INSTALLED_PACKAGE: ttf-ms-fonts" >> "$LOG_FILE"
-    fi
-
-    if [ -d "$FONT_DIR" ]; then
-        log_info "Verifying Flatpak/Snap font installation..."
-        if ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
-            log_info "Noto Sans Hebrew found in Flatpak/Snap fonts."
-        else
-            log_warning "Noto Sans Hebrew not found in Flatpak/Snap fonts. Re-copying..."
-            cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Failed to re-copy Noto Fonts."
-            echo "COPIED_FONTS: noto-fonts -> $FONT_DIR" >> "$LOG_FILE"
-            fc-cache -fv "$FONT_DIR" || log_warning "Failed to refresh Flatpak/Snap font cache."
-        fi
-    fi
-}
-
-create_system_fontconfig() {
-    log_info "Checking for existing system-wide FontConfig configuration..."
-    if [ -f "$SYSTEM_FONTCONFIG_FILE" ]; then
-        log_warning "Existing $SYSTEM_FONTCONFIG_FILE found. Backing it up..."
-        cp "$SYSTEM_FONTCONFIG_FILE" "$BACKUP_DIR/fonts.conf.$(date +%s)" || log_error "Failed to back up $SYSTEM_FONTCONFIG_FILE."
-        echo "BACKUP_FONTCONFIG: $SYSTEM_FONTCONFIG_FILE -> $BACKUP_DIR/fonts.conf.$(date +%s)" >> "$LOG_FILE"
-    fi
-
-    log_info "Creating system-wide FontConfig configuration for Hebrew fonts..."
-    mkdir -p "$SYSTEM_FONTCONFIG_DIR" || log_error "Failed to create $SYSTEM_FONTCONFIG_DIR."
-    cat << EOF > "$SYSTEM_FONTCONFIG_FILE"
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-    <alias>
-        <family>sans-serif</family>
-        <prefer>
-            <family>Noto Sans Hebrew</family>
-            <family>Arial</family>
-            <family>DejaVu Sans</family>
-        </prefer>
-    </alias>
-    <alias>
-        <family>serif</family>
-        <prefer>
-            <family>Noto Serif Hebrew</family>
-            <family>Times New Roman</family>
-            <family>DejaVu Serif</family>
-        </prefer>
-    </alias>
-    <match target="font">
-        <edit name="antialias" mode="assign"><bool>true</bool></edit>
-        <edit name="hinting" mode="assign"><bool>true</bool></edit>
-        <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
-        <edit name="rgba" mode="assign"><const>rgb</const></edit>
-    </match>
-</fontconfig>
-EOF
-    echo "CREATED_FONTCONFIG: $SYSTEM_FONTCONFIG_FILE" >> "$LOG_FILE"
-    log_info "System-wide FontConfig configuration created at $SYSTEM_FONTCONFIG_FILE."
-}
-
-refresh_font_cache() {
-    log_info "Refreshing system-wide font cache..."
-    fc-cache -fv || log_error "Failed to refresh system-wide font cache."
-    log_info "System-wide font cache refreshed successfully."
-}
-
-verify_font_selection() {
-    log_info "Verifying system-wide font selection..."
-    local selected_font
-    selected_font=$(fc-match sans-serif)
-    log_info "Current system-wide sans-serif font: $selected_font"
-    if [[ "$selected_font" =~ "NotoSansHebrew" || "$selected_font" =~ "Arial" ]]; then
-        log_info "System-wide Hebrew font selection looks good."
-    else
-        log_warning "Unexpected system-wide sans-serif font: $selected_font. Expected Noto Sans Hebrew or Arial."
-        log_warning "Check for conflicting FontConfig files in /etc/fonts/conf.d/ or ~/.config/fontconfig/conf.d/."
-    fi
-
-    if [ -d "$FLATPAK_CONFIG_DIR" ]; then
-        for app_dir in "$FLATPAK_CONFIG_DIR"/*; do
-            if [ -d "$app_dir" ]; then
-                local app_id=$(basename "$app_dir")
-                log_info "Checking font selection for Flatpak app $app_id..."
-                if [ -f "$app_dir/config/fontconfig/fonts.conf" ]; then
-                    log_info "FontConfig file found for $app_id. Assuming correct font selection."
-                else
-                    log_warning "No FontConfig file found for $app_id. Hebrew fonts may not work."
-                fi
-            fi
-        done
-    fi
-
-    if [ -d "$SNAP_CONFIG_DIR" ]; then
-        for snap_app in "$SNAP_CONFIG_DIR"/*; do
-            if [ -d "$snap_app" ]; then
-                local app_id=$(basename "$snap_app")
-                local app_version_dir
-                app_version_dir=$(readlink -f "$snap_app/current" 2>/dev/null)
-                if [ -n "$app_version_dir" ]; then
-                    local app_fonts_conf="$app_version_dir/.config/fontconfig/fonts.conf"
-                    log_info "Checking font selection for Snap app $app_id..."
-                    if [ -f "$app_fonts_conf" ]; then
-                        log_info "FontConfig file found for $app_id. Assuming correct font selection."
-                    else
-                        log_warning "No FontConfig file found for $app_id. Hebrew fonts may not work."
-                    fi
-                fi
-            fi
-        done
-    fi
-}
-
-reload_hyprland() {
-    if command -v hyprctl >/dev/null 2>&1 && pgrep -x Hyprland >/dev/null; then
-        log_info "Hyprland detected. Reloading Hyprland to apply font changes..."
-        hyprctl reload || log_warning "Failed to reload Hyprland. Please log out and back in manually."
-        log_info "Hyprland reloaded successfully."
-    else
-        log_info "Hyprland not detected or not running. Skipping reload."
-        log_info "Please restart applications or log out/in to apply changes."
-    fi
-}
-
-main() {
-    log_info "Starting Hebrew font setup for Arch Linux (system, Flatpak, Snap)..."
-    install_yay
-    install_system_fonts
-    install_flatpak_fonts
-    install_snap_fonts
-    verify_fonts
-    create_system_fontconfig
-    refresh_font_cache
-    verify_font_selection
-    reload_hyprland
-    log_info "Hebrew font setup completed successfully!"
-    log_info "Hebrew fonts should now work in browsers, Discord (Flatpak or native), Snap apps (e.g., Netflix), and other apps."
-    log_info "If issues persist, share the output of 'fc-match sans-serif' and 'fc-list | grep -i hebrew'."
-    echo "LOGGED_ACTIONS: Completed fonts installation" >> "$LOG_FILE"
-}
-
-main
-
+echo "Warning: Adding $ARGUMENT may cause Brave or Vesktop to crash on some systems (e.g., Bazzite Linux with KDE Wayland)."
+echo "If Brave crashes, restore the backup manually or run the undo script."
+echo "If Vesktop crashes, restore the backup manually or run the undo script."
+echo "Installation and modification complete!"
+echo "LOGGED_ACTIONS: Completed brave-vesktop installation, disabled hardware acceleration, set Hebrew font" >> "$LOG_FILE"
 exit 0
