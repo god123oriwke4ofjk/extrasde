@@ -3,6 +3,7 @@
 USER=${USER:-$(whoami)}
 [ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
 
+# Directories
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
@@ -12,19 +13,26 @@ BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
 PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
+SCRIPT_BASEDIR="$(dirname "$(realpath "$0")")"
+ICONS_SRC_DIR="$SCRIPT_BASEDIR/icons"
+KEYBINDS_SRC_DIR="$SCRIPT_BASEDIR/keybinds"
 
+# Validate system requirements
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
 
+# Create necessary directories
 mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 
+# Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session" >> "$LOG_FILE"
 
+# Install jq if not present
 if ! pacman -Qs jq >/dev/null 2>&1; then
     sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
     echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
@@ -33,6 +41,7 @@ else
     echo "Skipping: jq already installed"
 fi
 
+# Install dynamic-browser.sh
 if [ -f "$DYNAMIC_BROWSER_SCRIPT" ]; then
     cp "$DYNAMIC_BROWSER_SCRIPT" "$BACKUP_DIR/dynamic-browser.sh.$(date +%s)" || { echo "Error: Failed to backup dynamic-browser.sh"; exit 1; }
     echo "REPLACED_SCRIPT: dynamic-browser.sh -> $DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
@@ -117,6 +126,7 @@ EOF
 chmod +x "$DYNAMIC_BROWSER_SCRIPT" || { echo "Error: Failed to make dynamic-browser.sh executable"; exit 1; }
 echo "Made dynamic-browser.sh executable"
 
+# Configure dynamic-browser.sh in userprefs.conf
 if [ -f "$USERPREFS_CONF" ]; then
     cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$(date +%s)" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
     echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$(date +%s)" >> "$LOG_FILE"
@@ -130,54 +140,58 @@ else
     echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
 fi
 
+# Move .svg files from icons/ directory
 moved_files=0
 replace_files=()
-for file in *.svg; do
-    if [ -f "$file" ]; then
-        target_file="$ICON_DIR/$(basename "$file")"
-        if [ -f "$target_file" ]; then
-            src_hash=$(sha256sum "$file" | cut -d' ' -f1)
-            tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
-            if [ "$src_hash" = "$tgt_hash" ]; then
-                echo "Skipping $file: identical file already exists at $target_file"
+if [ -d "$ICONS_SRC_DIR" ]; then
+    for file in "$ICONS_SRC_DIR"/*.svg; do
+        if [ -f "$file" ]; then
+            target_file="$ICON_DIR/$(basename "$file")"
+            if [ -f "$target_file" ]; then
+                src_hash=$(sha256sum "$file" | cut -d' ' -f1)
+                tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
+                if [ "$src_hash" = "$tgt_hash" ]; then
+                    echo "Skipping $(basename "$file"): identical file already exists at $target_file"
+                else
+                    echo "Found $(basename "$file"): same name but different content at $target_file"
+                    replace_files+=("$file")
+                fi
             else
-                echo "Found $file: same name but different content at $target_file"
-                replace_files+=("$file")
+                mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $(basename "$file")"; exit 1; }
+                echo "Moved $(basename "$file") to $ICON_DIR/"
+                echo "MOVED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                ((moved_files++))
             fi
-        else
-            mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $file"; exit 1; }
-            echo "Moved $file to $ICON_DIR/"
-            echo "MOVED_SVG: $file -> $target_file" >> "$LOG_FILE"
-            ((moved_files++))
         fi
-    else
-        echo "Warning: No .svg files found in current directory, skipping."
-        break
-    fi
-done
+    done
+else
+    echo "Warning: Icons directory $ICONS_SRC_DIR not found. Skipping .svg file installation."
+fi
 
 if [ ${#replace_files[@]} -gt 0 ]; then
     echo "The following files have the same name but different content in $ICON_DIR:"
     for file in "${replace_files[@]}"; do
-        echo "- $file"
+        echo "- $(basename "$file")"
     done
     read -p "Replace these files in $ICON_DIR? [y/N]: " replace_choice
     if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
         for file in "${replace_files[@]}"; do
             target_file="$ICON_DIR/$(basename "$file")"
             cp "$target_file" "$BACKUP_DIR/$(basename "$file").$(date +%s)" || { echo "Error: Failed to backup $target_file"; exit 1; }
-            mv "$file" "$ICON_DIR/" || { echo "Error: Failed to replace $file"; exit 1; }
-            echo "Replaced $file in $ICON_DIR/"
-            echo "REPLACED_SVG: $file -> $target_file" >> "$LOG_FILE"
+            mv "$file" "$ICON_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
+            echo "Replaced $(basename "$file") in $ICON_DIR/"
+            echo "REPLACED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
             ((moved_files++))
         done
     else
         echo "Skipping replacement of non-identical files."
     fi
 fi
-[ "$moved_files" -eq 0 ] && echo "No new or replaced .svg files were moved."
+[ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were moved."
 
+# Install scripts from keybinds/ directory or fallback to hardcoded
 declare -A scripts
+# Hardcoded fallback scripts
 scripts["toggle-sleep.sh"]="\
 #!/bin/bash
 scrDir=\$(dirname \"\$(realpath \"\$0\")\") 
@@ -379,6 +393,20 @@ case \"\$1\" in
 esac
 "
 
+# Load scripts from keybinds/ directory
+if [ -d "$KEYBINDS_SRC_DIR" ]; then
+    for script_file in "$KEYBINDS_SRC_DIR"/*.sh; do
+        if [ -f "$script_file" ]; then
+            script_name=$(basename "$script_file")
+            scripts["$script_name"]=$(cat "$script_file")
+            echo "Loaded $script_name from $KEYBINDS_SRC_DIR"
+        fi
+    done
+else
+    echo "Warning: Keybinds directory $KEYBINDS_SRC_DIR not found. Using hardcoded scripts."
+fi
+
+# Install scripts
 for script_name in "${!scripts[@]}"; do
     script_path="$SCRIPT_DIR/$script_name"
     if [ -f "$script_path" ]; then
@@ -414,6 +442,7 @@ for script_name in "${!scripts[@]}"; do
     ls -l "$script_path"
 done
 
+# Configure keybindings
 if [ ! -f "$KEYBINDINGS_CONF" ]; then
     echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
     touch "$KEYBINDINGS_CONF" || { echo "Error: Failed to create $KEYBINDINGS_CONF"; exit 1; }
@@ -462,6 +491,7 @@ else
     fi
 fi
 
+# Configure userprefs.conf for kb_layout
 if [ ! -f "$USERPREFS_CONF" ]; then
     echo "Warning: $USERPREFS_CONF does not exist. Creating with input block."
     cat << 'EOF' > "$USERPREFS_CONF"
@@ -494,6 +524,7 @@ EOF
     fi
 fi
 
+# Configure Firefox autoscrolling
 if command -v firefox >/dev/null 2>&1; then
     if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
         echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
