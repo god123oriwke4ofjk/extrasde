@@ -195,41 +195,6 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-if [ -f "$VESKTOP_VENCORD_SETTINGS" ]; then
-    if ! jq '.useQuickCss == true' "$VESKTOP_VENCORD_SETTINGS" | grep -q true; then
-        cp "$VESKTOP_VENCORD_SETTINGS" "$BACKUP_DIR/vencord_settings.json.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_VENCORD_SETTINGS"; exit 1; }
-        echo "BACKUP_CONFIG: $VESKTOP_VENCORD_SETTINGS -> $BACKUP_DIR/vencord_settings.json.$(date +%s)" >> "$LOG_FILE"
-        echo "Created backup of $VESKTOP_VENCORD_SETTINGS"
-        jq '.useQuickCss = true' "$VESKTOP_VENCORD_SETTINGS" > temp.json && mv temp.json "$VESKTOP_VENCORD_SETTINGS" || { echo "Error: Failed to enable useQuickCss in $VESKTOP_VENCORD_SETTINGS"; exit 1; }
-        echo "MODIFIED_CONFIG: $VESKTOP_VENCORD_SETTINGS -> Enabled useQuickCss" >> "$LOG_FILE"
-        echo "Enabled useQuickCss in Vencord settings"
-    else
-        echo "Skipping: useQuickCss already enabled in $VESKTOP_VENCORD_SETTINGS"
-    fi
-else
-    echo "Warning: $VESKTOP_VENCORD_SETTINGS not found. Cannot ensure useQuickCss is enabled."
-    echo "LOGGED_WARNING: $VESKTOP_VENCORD_SETTINGS not found for useQuickCss" >> "$LOG_FILE"
-fi
-
-mkdir -p "$(dirname "$VESKTOP_CSS_FILE")" || { echo "Error: Failed to create $(dirname "$VESKTOP_CSS_FILE")"; exit 1; }
-if [ -f "$VESKTOP_CSS_FILE" ]; then
-    if ! grep -q "font-family: \"$HEBREW_FONT\"" "$VESKTOP_CSS_FILE"; then
-        cp "$VESKTOP_CSS_FILE" "$BACKUP_DIR/quickCss.css.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_CSS_FILE"; exit 1; }
-        echo "BACKUP_CONFIG: $VESKTOP_CSS_FILE -> $BACKUP_DIR/quickCss.css.$(date +%s)" >> "$LOG_FILE"
-        echo "Created backup of $VESKTOP_CSS_FILE"
-        echo "* { font-family: \"$HEBREW_FONT\", Arial, sans-serif !important; }" >> "$VESKTOP_CSS_FILE" || { echo "Error: Failed to modify $VESKTOP_CSS_FILE"; exit 1; }
-        echo ":lang(he) { font-family: \"$HEBREW_FONT\", sans-serif; }" >> "$VESKTOP_CSS_FILE" || { echo "Error: Failed to modify $VESKTOP_CSS_FILE"; exit 1; }
-        echo "MODIFIED_CONFIG: $VESKTOP_CSS_FILE -> Set Hebrew font to $HEBREW_FONT" >> "$LOG_FILE"
-        echo "Set Hebrew font to $HEBREW_FONT in Vesktop"
-    else
-        echo "Skipping: Hebrew font already set in $VESKTOP_CSS_FILE"
-    fi
-else
-    echo "* { font-family: \"$HEBREW_FONT\", Arial, sans-serif !important; }" > "$VESKTOP_CSS_FILE" || { echo "Error: Failed to create $VESKTOP_CSS_FILE"; exit 1; }
-    echo ":lang(he) { font-family: \"$HEBREW_FONT\", sans-serif; }" >> "$VESKTOP_CSS_FILE" || { echo "Error: Failed to modify $VESKTOP_CSS_FILE"; exit 1; }
-    echo "CREATED_CONFIG: $VESKTOP_CSS_FILE -> Set Hebrew font to $HEBREW_FONT" >> "$LOG_FILE"
-    echo "Created and set Hebrew font to $HEBREW_FONT in Vesktop"
-fi
 
 echo "Warning: Adding $ARGUMENT may cause Brave or Vesktop to crash on some systems (e.g., Bazzite Linux with KDE Wayland)."
 echo "If Brave crashes, restore the backup manually or run the undo script."
