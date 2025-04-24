@@ -15,6 +15,11 @@ PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 SCRIPT_BASEDIR="$(dirname "$(realpath "$0")")"
 ICONS_SRC_DIR="$SCRIPT_BASEDIR/icons"
+SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
+
+# Prompt for sudo password upfront
+echo "This script requires sudo privileges to install dependencies and configure sudoers."
+sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
 
 # Validate system requirements
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
@@ -30,6 +35,42 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 # Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session" >> "$LOG_FILE"
+
+# Configure sudoers for openvpn and kill
+if [ ! -f "$SUDOERS_FILE" ]; then
+    echo "Configuring sudoers to allow NOPASSWD for openvpn and kill..."
+    sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
+$USER ALL=(ALL) NOPASSWD: /bin/kill
+EOF" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
+    sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+    if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+        echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+        sudo rm -f "$SUDOERS_FILE"
+        exit 1
+    fi
+    echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
+    echo "Created $SUDOERS_FILE for $USER"
+else
+    if ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn" "$SUDOERS_FILE" || ! grep -q "$USER ALL=(ALL) NOPASSWD: /bin/kill" "$SUDOERS_FILE"; then
+        echo "Updating existing sudoers file..."
+        sudo cp "$SUDOERS_FILE" "$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
+        sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
+$USER ALL=(ALL) NOPASSWD: /bin/kill
+EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
+        sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+        if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+            echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+            sudo rm -f "$SUDOERS_FILE"
+            exit 1
+        fi
+        echo "MODIFIED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
+        echo "Updated $SUDOERS_FILE for $USER"
+    else
+        echo "Skipping: Sudoers already configured for $USER"
+    fi
+fi
 
 # Delete backups from the previous run
 current_timestamp=$(date +%s)
@@ -263,7 +304,15 @@ show_animated_notification() {
     local message=\"\$1\"
     local pid_file=\"\$2\"
     (
+        local start_time=\$(date +%s)
+        local timeout=25
         while true; do
+            current_time=\$(date +%s)
+            if [ \$((current_time - start_time)) -ge \$timeout ]; then
+                echo \"Error: Animation timed out after \$timeout seconds\" >&2
+                notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"Connection timed out after \$timeout seconds\"
+                exit 1
+            fi
             notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading1.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message.\" \"\"
             sleep 0.3
             notify-send -a \"HyDE Alert\" -i \"\${ICONS_DIR}/Wallbash-Icon/loading2.svg\" -r \"\$NOTIFY_ID\" -t 1100 \"VPNGate: \$message..\" \"\"
@@ -338,7 +387,7 @@ get_server_location() {
 start_vpn() {
     echo \"Starting VPN...\"
     show_animated_notification \"VPN Starting\" \"\$VPN_DIR/anim.pid\"
-    echo \"Debug: Running openvpn --config \$CONFIG_FILE --daemon --writepid \$VPN_DIR/vpn.pid\"
+    echo \"Debug: Running sudo openvpn --config \$CONFIG_FILE --daemon --writepid \$VPN_DIR/vpn.pid\"
     if ! sudo openvpn --config \"\$CONFIG_FILE\" --daemon --writepid \"\$VPN_DIR/vpn.pid\"; then
         echo \"Error: openvpn command failed.\"
         stop_animated_notification \"\$VPN_DIR/anim.pid\"
@@ -362,7 +411,11 @@ stop_vpn() {
     local silent=\"\$1\"
     echo \"Stopping VPN...\"
     if [ -f \"\$VPN_DIR/vpn.pid\" ]; then
-        sudo kill -SIGTERM \"\$(cat \"\$VPN_DIR/vpn.pid\")\"
+        echo \"Debug: Running sudo kill -SIGTERM \$(cat \"\$VPN_DIR/vpn.pid\")\"
+        if ! sudo kill -SIGTERM \"\$(cat \"\$VPN_DIR/vpn.pid\")\"; then
+            echo \"Error: Failed to kill VPN process.\"
+            notify-send -a \"HyDE Alert\" -r 91190 -t 1100 -i \"\${ICONS_DIR}/Wallbash-Icon/error.svg\" \"VPNGate: VPN Error\" \"Failed to stop VPN\"
+        fi
         rm -f \"\$VPN_DIR/vpn.pid\"
         echo \"VPN stopped.\"
         echo \"off\" > \"\$STATE_FILE\"
