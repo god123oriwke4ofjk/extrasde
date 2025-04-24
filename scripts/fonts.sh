@@ -17,6 +17,7 @@ SYSTEM_FONTCONFIG_DIR="$HOME/.config/fontconfig"
 SYSTEM_FONTCONFIG_FILE="$SYSTEM_FONTCONFIG_DIR/fonts.conf"
 FLATPAK_CONFIG_DIR="$HOME/.var/app"
 SNAP_CONFIG_DIR="$HOME/snap"
+VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -80,7 +81,26 @@ install_flatpak_fonts() {
     if command -v flatpak >/dev/null 2>&1; then
         log_info "Flatpak detected. Installing fonts for Flatpak apps..."
         mkdir -p "$FONT_DIR" || log_error "Failed to create $FONT_DIR."
-        
+
+       if flatpak list --app | grep -q "^$PACKAGE_ID"; then
+            log_info "Vesktop detected. Installing fonts for Vesktop..."
+
+            if [ -f "$VESKTOP_VENCORD_SETTINGS" ]; then
+                   if ! jq '.useQuickCss == true' "$VESKTOP_VENCORD_SETTINGS" | grep -q true; then
+                          cp "$VESKTOP_VENCORD_SETTINGS" "$BACKUP_DIR/vencord_settings.json.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_VENCORD_SETTINGS"; exit 1; }
+                          echo "BACKUP_CONFIG: $VESKTOP_VENCORD_SETTINGS -> $BACKUP_DIR/vencord_settings.json.$(date +%s)" >> "$LOG_FILE"
+                          echo "Created backup of $VESKTOP_VENCORD_SETTINGS"
+                          jq '.useQuickCss = true' "$VESKTOP_VENCORD_SETTINGS" > temp.json && mv temp.json "$VESKTOP_VENCORD_SETTINGS" || { echo "Error: Failed to enable useQuickCss in $VESKTOP_VENCORD_SETTINGS"; exit 1; }
+                          echo "MODIF IED_CONFIG: $VESKTOP_VENCORD_SETTINGS -> Enabled useQuickCss" >> "$LOG_FILE"
+                          echo "Enabled useQuickCss in Vencord settings"
+                  else
+                         echo "Skipping: useQuickCss already enabled in $VESKTOP_VENCORD_SETTINGS"
+                 fi
+          else
+                 echo "Warning: $VESKTOP_VENCORD_SETTINGS not found. Cannot ensure useQuickCss is enabled."
+              echo "LOGGED_WARNING: $VESKTOP_VENCORD_SETTINGS not found for useQuickCss" >> "$LOG_FILE"
+         fi
+               
         if ! ls "$FONT_DIR" | grep -qi "NotoSansHebrew"; then
             log_info "Copying Noto Fonts to $FONT_DIR..."
             cp -r /usr/share/fonts/noto/* "$FONT_DIR/" 2>/dev/null || log_warning "Some Noto Fonts could not be copied."
