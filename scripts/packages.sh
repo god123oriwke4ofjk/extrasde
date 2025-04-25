@@ -29,8 +29,6 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
 
-
-
 if ! command -v yay >/dev/null 2>&1; then
     sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
     git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
@@ -44,7 +42,7 @@ else
     echo "Skipping: yay already installed"
 fi
 
-for pkg in wget unzip jq linux-lts linux-lts-headers; do
+for pkg in wget unzip jq linux-lts linux-lts-headers wine proton; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
@@ -60,6 +58,19 @@ if ! yay -Qs brave-bin >/dev/null 2>&1; then
     echo "Installed brave-bin"
 else
     echo "Skipping: brave-bin already installed"
+fi
+
+if [ ! -d "$HOME/.local/share/osu-wine"]; then
+    git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1;}
+    cd /tmp/osu || {echo "Error: Failed to change to /tmp/osu"; exit 1; }
+    chmod +x ./osu_winello.sh || {echo "Error: failed to grant permission to osu_winello.sh"; exit 1;}
+    echo "1" | ./osu_winello.sh
+    cd - || exit 1
+    rm -rf /tmp/osu
+    echo "INSTALLED_PACKAGE: osu" >> "$LOG_FILE"
+    echo "Installed osu"
+else
+    echo "Skipped: osu-wine is already installed"
 fi
 
 [ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
