@@ -61,8 +61,23 @@ fi
 grep "INSTALLED_PACKAGE:" "$LOG_FILE" | while read -r line; do
     package=$(echo "$line" | cut -d' ' -f2-)
     echo "Removing installed package: $package"
-    sudo pacman -Rns --noconfirm "$package" 2>/dev/null || echo "Warning: Failed to remove package $package"
-    echo "UNDO: Removed package $package" >> "$UNDO_LOG"
+    if [ $package = "osu" ]; then
+        command="osu-wine --remove"
+        if ! command -v osu-wine &>/dev/null; then
+            echo "Error: osu-wine not found"
+        else
+            echo "y" | $command
+        fi
+        if [ $? -eq 0 ]; then
+            echo "UNDO: Removed package $package" >> "$UNDO_LOG"
+            echo "Osu succesfully removed osu"
+        else
+            echo "Error: Failed to remove osu-wine"
+        fi    
+    else  
+        sudo pacman -Rns --noconfirm "$package" 2>/dev/null || echo "Warning: Failed to remove package $package"
+        echo "UNDO: Removed package $package" >> "$UNDO_LOG"
+    fi
 done
 
 # Revert created or replaced scripts
