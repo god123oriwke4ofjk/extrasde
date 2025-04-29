@@ -17,6 +17,7 @@ EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
 VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
 VESKTOP_VENCORD_SETTINGS="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
+FONT_NAME="Alef"  # Change this to your desired Hebrew font
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
@@ -28,37 +29,6 @@ mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
-
-if ! command -v yay >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
-    git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
-    cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
-    makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
-    cd - || exit 1
-    rm -rf /tmp/yay
-    echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
-    echo "Installed yay"
-else
-    echo "Skipping: yay already installed"
-fi
-
-for pkg in wget unzip jq; do
-    if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
-        sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
-        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
-        echo "Installed $pkg"
-    else
-        echo "Skipping: $pkg already installed"
-    fi
-done
-
-if ! yay -Qs brave-bin >/dev/null 2>&1; then
-    yay -S --noconfirm brave-bin || { echo "Error: Failed to install brave-bin"; exit 1; }
-    echo "INSTALLED_PACKAGE: brave-bin" >> "$LOG_FILE"
-    echo "Installed brave-bin"
-else
-    echo "Skipping: brave-bin already installed"
-fi
 
 [ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
 
@@ -201,9 +171,41 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-echo "Warning: Adding $ARGUMENT may cause Brave or Vesktop to crash on some systems (e.g., Bazzite Linux with KDE Wayland)."
-echo "If Brave crashes, restore the backup manually or run the undo script."
-echo "If Vesktop crashes, restore the backup manually or run the undo script."
+# Ensure the desired Hebrew font is installed
+if ! fc-list :lang=he | grep -qi "$FONT_NAME"; then
+    yay -Syu --noconfirm ttf-alef || { echo "Error: Failed to install ttf-alef font"; exit 1; }
+    fc-cache -f -v || { echo "Error: Failed to update font cache"; exit 1; }
+    echo "INSTALLED_FONT: $FONT_NAME" >> "$LOG_FILE"
+    echo "Installed $FONT_NAME font and updated font cache"
+else
+    echo "Skipping: $FONT_NAME font already installed"
+fi
+
+FONT_CSS="
+\* Custom font for Vesktop \*
+::placeholder, body, button, input, select, textarea {
+    font-family: 'FONT_NAME', sans-serif;
+    text-rendering: optimizeLegibility;
+}
+"
+
+if [ -f "$VESKTOP_CSS_FILE" ]; then
+    if ! grep -q "font-family: '$FONT_NAME'" "$VESKTOP_CSS_FILE"; then
+        cp "$VESKTOP_CSS_FILE" "$BACKUP_DIR/quickCss.css.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_CSS_FILE"; exit 1; }
+        echo "BACKUP_CSS: $VESKTOP_CSS_FILE -> $BACKUP_DIR/quickCss.css.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $VESKTOP_CSS_FILE"
+        echo "$FONT_CSS" >> "$VESKTOP_CSS_FILE" || { echo "Error: Failed to append font CSS to $VESKTOP_CSS_FILE"; exit 1; }
+        echo "MODIFIED_CSS: $VESKTOP_CSS_FILE -> Added custom font CSS for $FONT_NAME" >> "$LOG_FILE"
+        echo "Added custom font CSS to $VESKTOP_CSS_FILE"
+    else
+        echo "Skipping: Custom font CSS for $FONT_NAME already present in $VESKTOP_CSS_FILE"
+    fi
+else
+    mkdir -p "$(dirname "$VESKTOP_CSS_FILE")" || { echo "Error: Failed to create directory for $VESKTOP_CSS_FILE"; exit 1; }
+    echo "$FONT_CSS" > "$VESKTOP_CSS_FILE" || { echo "Error: Failed to create $VESKTOP_CSS_FILE with font CSS"; exit 1; }
+    echo "CREATED_CSS: $VESKTOP_CSS_FILE -> Added custom font CSS for $FONT_NAME" >> "$LOG_FILE"
+    echo "Created $VESKTOP_CSS_FILE with custom font CSS"
+fi
+
 echo "Installation and modification complete!"
-echo "LOGGED_ACTIONS: Completed brave-vesktop installation, disabled hardware acceleration, set Hebrew font" >> "$LOG_FILE"
 exit 0
