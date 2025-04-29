@@ -4,7 +4,6 @@ set -e
 
 set -x
 
-# Define variables
 SUDO_USER_HOME=$(eval echo ~${SUDO_USER:-$USER})
 CONFIG_DIR="$SUDO_USER_HOME/.config/vpn/servers"
 AUTH_FILE="$SUDO_USER_HOME/.config/vpn/auth.txt"
@@ -20,7 +19,6 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Function to check if a package is installed
 check_package() {
     if ! pacman -Qs "$1" >/dev/null; then
         log "Package $1 not found. Installing..."
@@ -33,7 +31,6 @@ check_package() {
     fi
 }
 
-# Function to validate zip file
 validate_zip() {
     log "Validating zip file $CONFIG_ZIP..."
     if [ -f "$CONFIG_ZIP" ]; then
@@ -57,10 +54,8 @@ validate_zip() {
     fi
 }
 
-# Function to handle zip download
 download_configs() {
     log "Attempting to download VPNBook configuration files from $CONFIG_ZIP_URL..."
-    # Check HTTP status first
     response=$(curl -s -o /dev/null -w "%{http_code}" "$CONFIG_ZIP_URL")
     if [ "$response" -ne 200 ]; then
         log "ERROR: URL $CONFIG_ZIP_URL returned HTTP status $response"
@@ -78,23 +73,17 @@ download_configs() {
         log "Place the zip in $TEMP_DIR/configs.zip and rerun."
         exit 1
     }
-    # Validate the downloaded file
     validate_zip || {
         log "ERROR: Downloaded file is not a valid zip archive."
         exit 1
     }
 }
 
-# Function to update .ovpn files with recommended settings
 update_ovpn_configs() {
     log "Updating .ovpn files with recommended settings..."
     for ovpn_file in "$CONFIG_DIR"/*.ovpn; do
         if [ -f "$ovpn_file" ]; then
             log "Processing $ovpn_file"
-            # Remove deprecated or conflicting settings
-            sed -i '/^cipher /d' "$ovpn_file"
-            sed -i '/^comp-lzo$/d' "$ovpn_file"
-            # Check and update auth-user-pass
             if grep -q "^auth-user-pass" "$ovpn_file"; then
                 log "Updating auth-user-pass in $ovpn_file"
                 sed -i "s|^auth-user-pass.*|auth-user-pass $AUTH_FILE|" "$ovpn_file"
@@ -102,7 +91,13 @@ update_ovpn_configs() {
                 log "Adding auth-user-pass to $ovpn_file"
                 echo "auth-user-pass $AUTH_FILE" >> "$ovpn_file"
             fi
-            # Add recommended settings if not present
+            if grep -q "^verb 3" "$ovpn_file" && grep -q "^fast-io" "$ovpn_file"; then
+                log "Inserting cipher AES-256-CBC between verb 3 and fast-io in $ovpn_file"
+                sed -i '/^verb 3/a cipher AES-256-CBC' "$ovpn_file"
+            else
+                log "verb 3 or fast-io not found in $ovpn_file, appending cipher AES-256-CBC"
+                echo "cipher AES-256-CBC" >> "$ovpn_file"
+            fi
             grep -q "^comp-lzo no" "$ovpn_file" || echo "comp-lzo no" >> "$ovpn_file"
             grep -q "^auth-nocache" "$ovpn_file" || echo "auth-nocache" >> "$ovpn_file"
             grep -q "^verify-x509-name" "$ovpn_file" || echo "verify-x509-name server.vpnbook.com name" >> "$ovpn_file"
@@ -111,20 +106,17 @@ update_ovpn_configs() {
     done
 }
 
-# Check if running with sudo
 if [ "$(id -u)" != "0" ]; then
     log "This script must be run as root (use sudo)"
     exit 1
 fi
 
-# Check if auth.txt exists and has correct format
 if [ ! -f "$AUTH_FILE" ]; then
     log "ERROR: Authentication file $AUTH_FILE not found."
     log "Please create $AUTH_FILE with VPNBook username and password (one per line)."
     log "Get credentials from [VPNBook Free VPN](https://www.vpnbook.com/freevpn)."
     exit 1
 fi
-# Check if auth.txt has exactly two lines
 if [ $(wc -l < "$AUTH_FILE") -ne 2 ]; then
     log "ERROR: $AUTH_FILE must contain exactly two lines: username and password."
     log "Current format: $(cat "$AUTH_FILE")"
@@ -134,30 +126,25 @@ if [ $(wc -l < "$AUTH_FILE") -ne 2 ]; then
     exit 1
 fi
 
-# Initialize log file
 log "Starting VPN configuration script..."
 
-# Step 1: Install required packages for Arch Linux
 log "Checking and installing required packages..."
 check_package "$OPENVPN_PACKAGE"
 check_package "$UNZIP_PACKAGE"
 check_package "$CURL_PACKAGE"
 
-# Step 2: Create the configuration directory
 log "Creating configuration directory at $CONFIG_DIR..."
 mkdir -p "$CONFIG_DIR" || {
     log "ERROR: Failed to create directory $CONFIG_DIR"
     exit 1
 }
 
-# Step 3: Create temporary directory
 log "Creating temporary directory at $TEMP_DIR..."
 mkdir -p "$TEMP_DIR" || {
     log "ERROR: Failed to create directory $TEMP_DIR"
     exit 1
 }
 
-# Step 4: Download and extract VPNBook configuration files
 if validate_zip; then
     log "Using existing valid $CONFIG_ZIP."
 else
@@ -171,23 +158,19 @@ unzip -o "$CONFIG_ZIP" -d "$TEMP_DIR" || {
     exit 1
 }
 
-# Step 5: Move .ovpn files to the target directory
 log "Moving .ovpn files to $CONFIG_DIR..."
 find "$TEMP_DIR" -type f -name "*.ovpn" -exec mv {} "$CONFIG_DIR/" \; || {
     log "ERROR: Failed to move .ovpn files"
     exit 1
 }
 
-# Step 6: Update .ovpn files with recommended settings
 update_ovpn_configs
 
-# Step 7: Clean up temporary files
 log "Cleaning up temporary files..."
 rm -rf "$TEMP_DIR" || {
     log "WARNING: Failed to clean up $TEMP_DIR"
 }
 
-# Step 8: Set appropriate permissions
 log "Setting permissions for $CONFIG_DIR..."
 chown -R "$SUDO_USER:$SUDO_USER" "$CONFIG_DIR" || {
     log "ERROR: Failed to set ownership for $CONFIG_DIR"
@@ -198,7 +181,6 @@ chmod -R 600 "$CONFIG_DIR"/*.ovpn || {
     exit 1
 }
 
-# Step 9: Verify installation
 log "Verifying .ovpn files in $CONFIG_DIR..."
 if [ -n "$(ls -A "$CONFIG_DIR"/*.ovpn 2>/dev/null)" ]; then
     log "OpenVPN configuration files successfully installed in $CONFIG_DIR:"
