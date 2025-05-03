@@ -243,13 +243,10 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
         hyprctl dispatch focuswindow address:$window
         echo "Focused gpu-screen-recorder window"
         sleep 1
-        PID=$(hyprctl activewindow -j | jq .pid)
         sudo ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
-        if [ -n "$PID" ]; then
-            kill "$PID" || kill -9 "$PID"
-        fi
+        ~/.local/lib/hyde/dontkillsteam.sh
     else
         echo "Window not found."
     fi
