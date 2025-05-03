@@ -246,7 +246,7 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
         sudo ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
-        ~/.local/lib/hyde/dontkillsteam.sh
+        ~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILLLLEEEEEEED"; exit 1; }
     else
         echo "Window not found."
     fi
@@ -300,5 +300,6 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
+~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILLLLEEEEEEED"; exit 1; }
 echo "SCript Finished"
 exit 0
