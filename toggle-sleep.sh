@@ -1,5 +1,5 @@
 #!/bin/bash
-scrDir=\$(dirname \"$(realpath \"\$0\")\")
+scrDir=$(dirname "$(realpath "$0")")
 source \"\$scrDir/globalcontrol.sh\" || { echo \"Error: Failed to source globalcontrol.sh\"; exit 1; }
 STATE_FILE=\"\$HOME/.config/hypr/sleep-inhibit.state\"
 IDLE_DAEMON=\"hypridle\"
