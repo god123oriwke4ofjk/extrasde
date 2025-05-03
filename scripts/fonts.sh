@@ -209,9 +209,9 @@ fi
 SYSTEMD_USER_DIR="/home/$USER/.config/systemd/user"
 RESTORE_CSS_SCRIPT="/home/$USER/.local/bin/restore-vesktop-css.sh"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-RESTORE_CSS_SOURCE="$SCRIPT_DIR/config/restore-css.sh"
-SYSTEMD_SERVICE_SOURCE="$SCRIPT_DIR/config/systemd/restore-vesktop-css.service"
-SYSTEMD_PATH_SOURCE="$SCRIPT_DIR/config/systemd/restore-vesktop-css.path"
+RESTORE_CSS_SOURCE="$SCRIPT_DIR/../config/restore-css.sh"
+SYSTEMD_SERVICE_SOURCE="$SCRIPT_DIR/../config/systemd/restore-vesktop-css.service"
+SYSTEMD_PATH_SOURCE="$SCRIPT_DIR/../config/systemd/restore-vesktop-css.path"
 
 [ ! -f "$RESTORE_CSS_SOURCE" ] && { echo "Error: $RESTORE_CSS_SOURCE not found"; exit 1; }
 
