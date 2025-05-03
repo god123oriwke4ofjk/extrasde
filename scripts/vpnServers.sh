@@ -4,6 +4,8 @@ set -e
 
 set -x
 
+cp ../config/servers ~/.config/vpn/servers
+
 SUDO_USER_HOME=$(eval echo ~${SUDO_USER:-$USER})
 CONFIG_DIR="$SUDO_USER_HOME/.config/vpn/servers"
 AUTH_FILE="$SUDO_USER_HOME/.config/vpn/auth.txt"
