@@ -49,7 +49,7 @@ else
     echo "Skipping: yay already installed"
 fi
 
-for pkg in xclip wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg; do
+for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
@@ -234,10 +234,22 @@ for pkg in com.dec05eba.gpu_screen_recorder  dev.vencord.Vesktop  org.vinegarhq.
 done
 
 if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
+    sudo ydotool &
     echo "Generating gpu-screen-recorder config files" 
     flatpak run com.dec05eba.gpu_screen_recorder &
-    sleep 2
-    flatpak kill com.dec05eba.gpu_screen_recorder
+    sleep 1
+    window=$(hyprctl clients -j | jq -r '.[] | select(.class=="gpu-screen-recorder") | .address')
+    if [[ -n "$window" ]]; then
+        hyprctl dispatch focuswindow address:$window
+        echo "Focused gpu-screen-recorder window"
+        sleep 1
+        sudo ydotool mousemove 500 400 click 1
+        echo "Clicked on the window"
+        sleep 1
+        flatpak kill com.dec05eba.gpu_screen_recorder
+    else
+        echo "Window not found."
+    fi
 else
     echo "WARNING Cannot locate gpu-screen-recorder"
 fi
