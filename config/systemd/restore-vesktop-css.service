@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore Vesktop quickCss.css after updates
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$RESTORE_CSS_SCRIPT
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
