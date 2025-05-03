@@ -229,6 +229,13 @@ for pkg in com.dec05eba.gpu_screen_recorder  dev.vencord.Vesktop  org.vinegarhq.
     fi
 done
 
+if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; do
+    com.dec05eba.gpu_screen_recorder &
+    pid = &!
+    sleep 1
+    kill $pid
+done
+
 [ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ] && { echo "Error: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR"; exit 1; }
 
 if [ ! -f "$USER_DIR/$VESKTOP_DESKTOP_FILE" ]; then
