@@ -219,13 +219,15 @@ else
     echo "Skipping: flathub repository already added"
 fi
 
-if ! flatpak list | grep -q dev.vencord.Vesktop; then
-    flatpak install --user -y flathub dev.vencord.Vesktop || { echo "Error: Failed to install Vesktop"; exit 1; }
-    echo "INSTALLED_FLATPAK: dev.vencord.Vesktop" >> "$LOG_FILE"
-    echo "Installed Vesktop"
-else
-    echo "Skipping: Vesktop already installed"
-fi
+for pkg in com.dec05eba.gpu_screen_recorder  dev.vencord.Vesktop  org.vinegarhq.Sober; do
+    if ! flatpak list | grep -q "$pkg"; then
+        flatpak install --user -y flathub "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        echo "INSTALLED_FLATPAK: $pkg" >> "$LOG_FILE"
+        echo "Installed $pkg"
+    else
+        echo "Skipping: $pkg already installed"
+    fi
+done
 
 [ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ] && { echo "Error: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR"; exit 1; }
 
