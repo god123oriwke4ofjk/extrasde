@@ -233,7 +233,7 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     echo "Generating gpu-screen-recorder config files" 
     com.dec05eba.gpu_screen_recorder &
     sleep 1
-    kill &!
+    pkill com.dec05eba.gpu_screen_recorder
 else
     echo "WARNING Cannot locate gpu-screen-recorder"
 fi
