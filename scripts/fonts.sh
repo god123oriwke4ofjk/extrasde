@@ -171,7 +171,6 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-# Ensure the desired Hebrew font is installed
 if ! fc-list :lang=he | grep -qi "$FONT_NAME"; then
     yay -Syu --noconfirm ttf-alef || { echo "Error: Failed to install ttf-alef font"; exit 1; }
     fc-cache -f -v || { echo "Error: Failed to update font cache"; exit 1; }
@@ -182,9 +181,9 @@ else
 fi
 
 FONT_CSS="
-\* Custom font for Vesktop \*
+* Custom font for Vesktop *
 ::placeholder, body, button, input, select, textarea {
-    font-family: 'FONT_NAME', sans-serif;
+    font-family: '$FONT_NAME', sans-serif;
     text-rendering: optimizeLegibility;
 }
 "
@@ -206,6 +205,38 @@ else
     echo "CREATED_CSS: $VESKTOP_CSS_FILE -> Added custom font CSS for $FONT_NAME" >> "$LOG_FILE"
     echo "Created $VESKTOP_CSS_FILE with custom font CSS"
 fi
+
+SYSTEMD_USER_DIR="/home/$USER/.config/systemd/user"
+RESTORE_CSS_SCRIPT="/home/$USER/.local/bin/restore-vesktop-css.sh"
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+RESTORE_CSS_SOURCE="$SCRIPT_DIR/config/restore-css.sh"
+SYSTEMD_SERVICE_SOURCE="$SCRIPT_DIR/config/systemd/restore-vesktop-css.service"
+SYSTEMD_PATH_SOURCE="$SCRIPT_DIR/config/systemd/restore-vesktop-css.path"
+
+[ ! -f "$RESTORE_CSS_SOURCE" ] && { echo "Error: $RESTORE_CSS_SOURCE not found"; exit 1; }
+
+[ ! -f "$SYSTEMD_SERVICE_SOURCE" ] && { echo "Error: $SYSTEMD_SERVICE_SOURCE not found"; exit 1; }
+[ ! -f "$SYSTEMD_PATH_SOURCE" ] && { echo "Error: $SYSTEMD_PATH_SOURCE not found"; exit 1; }
+
+mkdir -p "$(dirname "$RESTORE_CSS_SCRIPT")" || { echo "Error: Failed to create directory for $RESTORE_CSS_SCRIPT"; exit 1; }
+
+cp "$RESTORE_CSS_SOURCE" "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to copy $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"; exit 1; }
+chmod +x "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to make $RESTORE_CSS_SCRIPT executable"; exit 1; }
+echo "COPIED_SCRIPT: $RESTORE_CSS_SOURCE -> $RESTORE_CSS_SCRIPT" >> "$LOG_FILE"
+echo "Copied $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"
+
+mkdir -p "$SYSTEMD_USER_DIR" || { echo "Error: Failed to create $SYSTEMD_USER_DIR"; exit 1; }
+
+cp "$SYSTEMD_SERVICE_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.service" || { echo "Error: Failed to copy $SYSTEMD_SERVICE_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.service"; exit 1; }
+cp "$SYSTEMD_PATH_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.path" || { echo "Error: Failed to copy $SYSTEMD_PATH_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.path"; exit 1; }
+echo "COPIED_SYSTEMD: $SYSTEMD_SERVICE_SOURCE -> $SYSTEMD_USER_DIR/restore-vesktop-css.service" >> "$LOG_FILE"
+echo "COPIED_SYSTEMD: $SYSTEMD_PATH_SOURCE -> $SYSTEMD_USER_DIR/restore-vesktop-css.path" >> "$LOG_FILE"
+echo "Copied systemd service and path files to $SYSTEMD_USER_DIR"
+
+systemctl --user enable restore-vesktop-css.path || { echo "Error: Failed to enable restore-vesktop-css.path"; exit 1; }
+systemctl --user start restore-vesktop-css.path || { echo "Error: Failed to start restore-vesktop-css.path"; exit 1; }
+echo "ENABLED_SYSTEMD: restore-vesktop-css.path" >> "$LOG_FILE"
+echo "Enabled and started restore-vesktop-css.path"
 
 echo "Installation and modification complete!"
 exit 0
