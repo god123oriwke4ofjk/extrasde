@@ -9,7 +9,7 @@ BRAVE_DESKTOP_FILE="brave-browser.desktop"
 VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
 BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
-VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
+VESKTOP_SOURCE_DIR="$HOME Respons://home/$USER/.local/share/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
 EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
@@ -218,14 +218,40 @@ SYSTEMD_PATH_SOURCE="$SCRIPT_DIR/../config/systemd/restore-vesktop-css.path"
 [ ! -f "$SYSTEMD_SERVICE_SOURCE" ] && { echo "Error: $SYSTEMD_SERVICE_SOURCE not found"; exit 1; }
 [ ! -f "$SYSTEMD_PATH_SOURCE" ] && { echo "Error: $SYSTEMD_PATH_SOURCE not found"; exit 1; }
 
+if grep -q "PathChanged=.*\$VESKTOP_CSS_FILE" "$SYSTEMD_PATH_SOURCE"; then
+    echo "Warning: $SYSTEMD_PATH_SOURCE contains variable \$VESKTOP_CSS_FILE. Replacing with absolute path."
+    sed -i "s|PathChanged=.*\$VESKTOP_CSS_FILE|PathChanged=/home/%u/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css|" "$SYSTEMD_PATH_SOURCE" || { echo "Error: Failed to fix PathChanged in $SYSTEMD_PATH_SOURCE"; exit 1; }
+    echo "Fixed PathChanged in $SYSTEMD_PATH_SOURCE to use absolute path"
+    echo "FIXED_SYSTEMD_PATH: $SYSTEMD_PATH_SOURCE -> Replaced \$VESKTOP_CSS_FILE with absolute path" >> "$LOG_FILE"
+fi
+
+if ! grep -q "PathChanged=/home/%u" "$SYSTEMD_PATH_SOURCE"; then
+    echo "Error: $SYSTEMD_PATH_SOURCE does not contain an absolute PathChanged path"
+    exit 1
+fi
+
 mkdir -p "$(dirname "$RESTORE_CSS_SCRIPT")" || { echo "Error: Failed to create directory for $RESTORE_CSS_SCRIPT"; exit 1; }
+
+if [ -f "$RESTORE_CSS_SCRIPT" ]; then
+    cp "$RESTORE_CSS_SCRIPT" "$BACKUP_DIR/restore-vesktop-css.sh.$(date +%s)" || { echo "Error: Failed to backup $RESTORE_CSS_SCRIPT"; exit 1; }
+    echo "BACKUP_SCRIPT: $RESTORE_CSS_SCRIPT -> $BACKUP_DIR/restore-vesktop-css.sh.$(date +%s)" >> "$LOG_FILE"
+    echo "Created backup of $RESTORE_CSS_SCRIPT"
+fi
 
 cp "$RESTORE_CSS_SOURCE" "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to copy $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"; exit 1; }
 chmod +x "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to make $RESTORE_CSS_SCRIPT executable"; exit 1; }
-echo "COPIED_SCRIPT: $RESTORE_CSS_SOURCE -> $RESTORE_CSS_SCRIPT" >> "$LOG_FILE"
+echo "CREATED_SCRIPT: $RESTORE_CSS_SOURCE -> $RESTORE_CSS_SCRIPT" >> "$LOG_FILE"
 echo "Copied $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"
 
 mkdir -p "$SYSTEMD_USER_DIR" || { echo "Error: Failed to create $SYSTEMD_USER_DIR"; exit 1; }
+
+for unit in restore-vesktop-css.service restore-vesktop-css.path; do
+    if [ -f "$SYSTEMD_USER_DIR/$unit" ]; then
+        cp "$SYSTEMD_USER_DIR/$unit" "$BACKUP_DIR/$unit.$(date +%s)" || { echo "Error: Failed to backup $SYSTEMD_USER_DIR/$unit"; exit 1; }
+        echo "BACKUP_SYSTEMD: $SYSTEMD_USER_DIR/$unit -> $BACKUP_DIR/$unit.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $SYSTEMD_USER_DIR/$unit"
+    fi
+done
 
 cp "$SYSTEMD_SERVICE_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.service" || { echo "Error: Failed to copy $SYSTEMD_SERVICE_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.service"; exit 1; }
 cp "$SYSTEMD_PATH_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.path" || { echo "Error: Failed to copy $SYSTEMD_PATH_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.path"; exit 1; }
