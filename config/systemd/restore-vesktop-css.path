@@ -2,7 +2,7 @@
 Description=Monitor Vesktop configuration for updates to restore quickCss.css
 
 [Path]
-PathChanged=$VESKTOP_CSS_FILE
+PathChanged=/home/%u/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css
 Unit=restore-vesktop-css.service
 
 [Install]
