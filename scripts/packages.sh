@@ -300,6 +300,23 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILLLLEEEEEEED"; exit 1; }
+if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
+    echo "Editing gpu-screen-recorder config"
+    ~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILED TO KILL GPU_SCREEN_RECORDER"; exit 1; }
+    CONFIG_FILE="/home/$USER/.var/app/com.dec05eba.gpu_screen_recorder/config/gpu-screen-recorder/config"
+    sleep 1
+    if [ -f "$CONFIG_FILE" ]; then
+        sed -i 's/main.use_new_ui false/main.use_new_ui true/' "$CONFIG_FILE"
+        if [[ $? -eq 0 ]]; then
+            echo "Successfully changed main.use_new_ui to true in $CONFIG_FILE"
+        else
+            echo "Error: Failed to modify main.use_new_ui in $CONFIG_FILE"
+            exit 1
+        fi
+    else
+        echo "Warning: $CONFIG_FILE not found. Cannot modify main.use_new_ui."
+    fi
+fi
+
 echo "SCript Finished"
 exit 0
