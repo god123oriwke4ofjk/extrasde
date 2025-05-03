@@ -219,23 +219,15 @@ fi
 SLEEP_BIND_LINE="bindd = \$mainMod, I, \$d toggle sleep inhibition , exec, \$scrPath/toggle-sleep.sh # toggle sleep inhibition"
 VPN_LINES="\
 \$d=[\$ut|Vpn Commands]
-bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpnScript.sh # toggle vpn
-bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpnScript.sh change # change vpn server"
-APP_LINES="\
-\$l=Launcher
-\$d=[\$l|Apps]
-bindd = \$mainMod, T, \$d terminal emulator , exec, \$TERMINAL
-bindd = \$mainMod, E, \$d file explorer , exec, \$EXPLORER
-bindd = \$mainMod, C, \$d text editor , exec, \$EDITOR
-bindd = \$mainMod, B, \$d web browser , exec, \$BROWSER
-bindd = Control Shift, Escape, \$d system monitor , exec, \$scrPath/sysmonlaunch.sh
-bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder"
+bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
+bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
+SCREEN_RECORDER_LINE="bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder"
 
 # Check if all keybindings already exist
 if grep -Fx "$SLEEP_BIND_LINE" "$KEYBINDINGS_CONF" > /dev/null && \
    grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null && \
-   grep -F "bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder" "$KEYBINDINGS_CONF" > /dev/null; then
-    echo "Skipping: Sleep, VPN, and App bindings (including screen recorder) already exist in $KEYBINDINGS_CONF"
+   grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+    echo "Skipping: Sleep, VPN, and screen recorder bindings already exist in $KEYBINDINGS_CONF"
 else
     UTILITIES_START='$d=[$ut]'
     SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
@@ -245,77 +237,65 @@ else
     cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$current_timestamp" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
     echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.$current_timestamp" >> "$LOG_FILE"
 
-    # If Launcher section doesn't exist, append all bindings
-    if ! grep -q "$LAUNCHER_START" "$KEYBINDINGS_CONF"; then
-        echo "Warning: Launcher section ($LAUNCHER_START) not found in $KEYBINDINGS_CONF. Appending all bindings."
+    # Update or add sleep and VPN bindings
+    if ! grep -Fx "$SLEEP_BIND_LINE" "$KEYBINDINGS_CONF" > /dev/null || ! grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
         if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-            echo -e "\n$UTILITIES_START\n$SLEEP_BIND_LINE\n$VPN_LINES\n\n$APP_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEY jadings_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Appending Utilities section to $KEYBINDINGS_CONF"
+            echo -e "\n$UTILITIES_START\n$SLEEP_BIND_LINE\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Appended Utilities section with sleep and VPN bindings" >> "$LOG_FILE"
         else
-            echo -e "\n$APP_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-        fi
-        echo "Added sleep, VPN, and app bindings (including screen recorder) to $KEYBINDINGS_CONF"
-        echo "MODIFIED_KEYBINDINGS: Added sleep, VPN, and app bindings" >> "$LOG_FILE"
-    else
-        # Launcher section exists, check for Apps subsection
-        if ! grep -q "$APPS_START" "$KEYBINDINGS_CONF"; then
-            # Apps subsection doesn't exist, add it under Launcher
-            awk -v app_lines="$APP_LINES" -v launcher_start="$LAUNCHER_START" '
-                BEGIN { found_launcher=0 }
-                $0 ~ launcher_start { found_launcher=1; print; next }
-                found_launcher && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print app_lines "\n"; found_launcher=0 }
-                found_launcher && /^$/ { print app_lines "\n"; found_launcher=0 }
+            awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
+                BEGIN { found_util=0; added=0 }
+                $0 ~ util_start { found_util=1; print; next }
+                found_util && $0 ~ sleep_line && !added { print; if (!index($0, vpn_lines)) { print vpn_lines } added=1; next }
+                found_util && $0 ~ sc_start && !added { print vpn_lines "\n"; added=1; print; next }
+                found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
+                found_util && /^$/ && !added { print vpn_lines "\n"; added=1; next }
                 { print }
             ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
             mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "Added app bindings (including screen recorder) to $KEYBINDINGS_CONF"
-            echo "MODIFIED_KEYBINDINGS: Added app bindings" >> "$LOG_FILE"
-        else
-            # Apps subsection exists, check if screen recorder binding is missing
-            if ! grep -F "bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder" "$KEYBINDINGS_CONF" > /dev/null; then
-                awk -v app_line="bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder" -v apps_start="$APPS_START" '
-                    BEGIN { found_apps=0 }
-                    $0 ~ apps_start { found_apps=1; print; next }
-                    found_apps && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print app_line "\n"; found_apps=0 }
-                    found_apps && /^$/ { print app_line "\n"; found_apps=0 }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added screen recorder binding to $KEYBINDINGS_CONF"
-                echo "MODIFIED_KEYBINDINGS: Added screen recorder binding" >> "$LOG_FILE"
-            fi
+            echo "Added/updated sleep and VPN bindings to $KEYBINDINGS_CONF"
+            echo "DEBUG: Updated Utilities section with sleep and VPN bindings" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added/updated sleep and VPN bindings" >> "$LOG_FILE"
         fi
+    fi
 
-        # Ensure sleep and VPN bindings are added if missing
-        if ! grep -Fx "$SLEEP_BIND_LINE" "$KEYBINDINGS_CONF" > /dev/null || ! grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
-            temp_file=$(mktemp)
-            cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$current_timestamp" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-                echo -e "\n$UTILITIES_START\n$SLEEP_BIND_LINE\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            else
-                if grep -q "$SCREEN_CAPTURE_START" "$KEYBINDINGS_CONF"; then
-                    awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
-                        BEGIN { found_util=0; added=0 }
-                        $0 ~ util_start { found_util=1 }
-                        $0 ~ sleep_line && found_util && !added { print; print vpn_lines; added=1; next }
-                        $0 ~ sc_start && found_util && !added { print vpn_lines "\n"; added=1 }
-                        { print }
-                    ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                else
-                    awk -v sleep_line="$SLEEP_BIND_LINE" -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" '
-                        BEGIN { found_util=0; added=0 }
-                        !found_util { print }
-                        $0 ~ util_start { found_util=1 }
-                        found_util && $0 ~ sleep_line && !added { print; print vpn_lines; added=1; next }
-                        found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
-                        found_util && /^$/ && !added { print vpn_lines "\n"; added=1 }
-                        { print }
-                    ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                fi
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added sleep and VPN bindings to $KEYBINDINGS_CONF"
-                echo "MODIFIED_KEYBINDINGS: Added sleep and VPN bindings" >> "$LOG_FILE"
-            fi
+    # Update or add screen recorder binding
+    if ! grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        if ! grep -q "$LAUNCHER_START" "$KEYBINDINGS_CONF"; then
+            echo "Appending Launcher section with Apps to $KEYBINDINGS_CONF"
+            echo -e "\n$l=Launcher\n$APPS_START\n$SCREEN_RECORDER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Added Launcher section with screen recorder binding to $KEYBINDINGS_CONF"
+            echo "DEBUG: Appended Launcher section with screen recorder binding" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added Launcher section with screen recorder binding" >> "$LOG_FILE"
+        elif ! grep -q "$APPS_START" "$KEYBINDINGS_CONF"; then
+            awk -v apps_start="$APPS_START" -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v launcher_start="$LAUNCHER_START" '
+                BEGIN { found_launcher=0 }
+                $0 ~ launcher_start { found_launcher=1; print; next }
+                found_launcher && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print apps_start "\n" screen_recorder_line "\n"; found_launcher=0; print; next }
+                found_launcher && /^$/ { print apps_start "\n" screen_recorder_line "\n"; found_launcher=0; next }
+                { print }
+            ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Added Apps section with screen recorder binding to $KEYBINDINGS_CONF"
+            echo "DEBUG: Added Apps section with screen recorder binding" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added Apps section with screen recorder binding" >> "$LOG_FILE"
+        else
+            awk -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v apps_start="$APPS_START" '
+                BEGIN { found_apps=0 }
+                $0 ~ apps_start { found_apps=1; print; next }
+                found_apps && /bindd = \$mainMod, T, \$d terminal emulator/ { print; print screen_recorder_line; found_apps=0; next }
+                found_apps && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print screen_recorder_line "\n"; found_apps=0; print; next }
+                found_apps && /^$/ { print screen_recorder_line "\n"; found_apps=0; next }
+                { print }
+            ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Added screen recorder binding to existing Apps section in $KEYBINDINGS_CONF"
+            echo "DEBUG: Added screen recorder binding to existing Apps section" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added screen recorder binding to Apps section" >> "$LOG_FILE"
         fi
+    else
+        echo "Skipping: Screen recorder binding already exists in $KEYBINDINGS_CONF"
     fi
 fi
 
