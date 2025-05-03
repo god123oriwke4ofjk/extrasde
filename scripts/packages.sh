@@ -249,6 +249,7 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
         sleep 1
         if [ -n "$PID" ]; then
             kill "$PID" || kill -9 "$PID"
+        fi
     else
         echo "Window not found."
     fi
