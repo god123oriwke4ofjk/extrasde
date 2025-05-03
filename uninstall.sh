@@ -14,6 +14,7 @@ FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
 PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
 SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
+SYSTEMD_USER_DIR="/home/$USER/.config/systemd/user"
 
 # Initialize undo log
 UNDO_LOG="/home/$USER/.local/lib/hyde/undo.log"
@@ -32,6 +33,41 @@ check_file() {
     [ -f "$file" ] && [ -s "$file" ] && return 0
     return 1
 }
+
+# Revert systemd services and path units
+if grep -q "ENABLED_SYSTEMD:" "$LOG_FILE"; then
+    grep "ENABLED_SYSTEMD:" "$LOG_FILE" | while read -r line; do
+        unit=$(echo "$line" | cut -d' ' -f2)
+        echo "Disabling and stopping systemd unit: $unit"
+        systemctl --user disable "$unit" 2>/dev/null || echo "Warning: Failed to disable $unit"
+        systemctl --user stop "$unit" 2>/dev/null || echo "Warning: Failed to stop $unit"
+        echo "UNDO: Disabled and stopped systemd unit $unit" >> "$UNDO_LOG"
+    done
+fi
+
+if grep -q "COPIED_SYSTEMD:" "$LOG_FILE"; then
+    grep "COPIED_SYSTEMD:" "$LOG_FILE" | while read -r line; do
+        systemd_file=$(echo "$line" | cut -d' ' -f4)
+        systemd_name=$(basename "$systemd_file")
+        if check_file "$systemd_file"; then
+            echo "Removing systemd file: $systemd_file"
+            rm -f "$systemd_file" || { echo "Error: Failed to remove $systemd_file"; exit 1; }
+            echo "UNDO: Removed systemd file $systemd_file" >> "$UNDO_LOG"
+        else
+            echo "Skipping: Systemd file $systemd_file already removed or never copied."
+        fi
+        # Restore backed-up systemd file if exists
+        backup_file=$(ls -t "$BACKUP_DIR/$systemd_name."* 2>/dev/null | head -n1)
+        if check_file "$backup_file"; then
+            echo "Restoring backed-up systemd file: $backup_file to $systemd_file"
+            cp "$backup_file" "$systemd_file" || { echo "Error: Failed to restore $systemd_file"; exit 1; }
+            echo "UNDO: Restored systemd file $systemd_file from $backup_file" >> "$UNDO_LOG"
+        fi
+    done
+    # Reload systemd user daemon to reflect changes
+    systemctl --user daemon-reload
+    echo "UNDO: Reloaded systemd user daemon" >> "$UNDO_LOG"
+fi
 
 # Revert sudoers changes
 if grep -q -E "CREATED_SUDOERS:|MODIFIED_SUDOERS:" "$LOG_FILE"; then
@@ -61,7 +97,7 @@ fi
 grep "INSTALLED_PACKAGE:" "$LOG_FILE" | while read -r line; do
     package=$(echo "$line" | cut -d' ' -f2-)
     echo "Removing installed package: $package"
-    if [ $package = "osu" ]; then
+    if [ "$package" = "osu" ]; then
         command="osu-wine --remove"
         if ! command -v osu-wine &>/dev/null; then
             echo "Error: osu-wine not found"
@@ -70,11 +106,11 @@ grep "INSTALLED_PACKAGE:" "$LOG_FILE" | while read -r line; do
         fi
         if [ $? -eq 0 ]; then
             echo "UNDO: Removed package $package" >> "$UNDO_LOG"
-            echo "Osu succesfully removed osu"
+            echo "Osu successfully removed"
         else
             echo "Error: Failed to remove osu-wine"
-        fi    
-    else  
+        fi
+    else
         sudo pacman -Rns --noconfirm "$package" 2>/dev/null || echo "Warning: Failed to remove package $package"
         echo "UNDO: Removed package $package" >> "$UNDO_LOG"
     fi
@@ -82,7 +118,7 @@ done
 
 # Revert created or replaced scripts
 grep -E "CREATED_SCRIPT:|REPLACED_SCRIPT:" "$LOG_FILE" | while read -r line; do
-    script_path=$(echo "$line" | cut -d' ' -f3- | cut -d' ' -f3)
+    script_path=$(echo "$line" | cut -d' ' -f4)
     script_name=$(basename "$script_path")
     if check_file "$script_path"; then
         echo "Removing script: $script_path"
@@ -97,13 +133,13 @@ grep -E "CREATED_SCRIPT:|REPLACED_SCRIPT:" "$LOG_FILE" | while read -r line; do
         echo "Restoring backed-up script: $backup_file to $script_path"
         cp "$backup_file" "$script_path" || { echo "Error: Failed to restore $script_path"; exit 1; }
         chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-        echo "UNDO: Restored $script_path from $backup_file" >> "$UNDO_LOG"
+        echo "UNDO: Restored script $script_path from $backup_file" >> "$UNDO_LOG"
     fi
 done
 
 # Revert moved or replaced SVG files
 grep -E "MOVED_SVG:|REPLACED_SVG:" "$LOG_FILE" | while read -r line; do
-    svg_file=$(echo "$line" | cut -d' ' -f3- | cut -d' ' -f3)
+    svg_file=$(echo "$line" | cut -d' ' -f4)
     svg_name=$(basename "$svg_file")
     if check_file "$svg_file"; then
         echo "Removing SVG: $svg_file"
@@ -117,7 +153,7 @@ grep -E "MOVED_SVG:|REPLACED_SVG:" "$LOG_FILE" | while read -r line; do
     if check_file "$backup_file"; then
         echo "Restoring backed-up SVG: $backup_file to $svg_file"
         cp "$backup_file" "$svg_file" || { echo "Error: Failed to restore $svg_file"; exit 1; }
-        echo "UNDO: Restored $svg_file from $backup_file" >> "$UNDO_LOG"
+        echo "UNDO: Restored SVG $svg_file from $backup_file" >> "$UNDO_LOG"
     fi
 done
 
