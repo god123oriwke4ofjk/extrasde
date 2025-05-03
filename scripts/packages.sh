@@ -237,6 +237,7 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     sudo ydotool &
     echo "Generating gpu-screen-recorder config files" 
     flatpak run com.dec05eba.gpu_screen_recorder &
+    PID=$!
     sleep 1
     window=$(hyprctl clients -j | jq -r '.[] | select(.class=="gpu-screen-recorder") | .address')
     if [[ -n "$window" ]]; then
@@ -246,7 +247,7 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
         sudo ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
-        flatpak kill com.dec05eba.gpu_screen_recorder
+        kill "$PID"
     else
         echo "Window not found."
     fi
