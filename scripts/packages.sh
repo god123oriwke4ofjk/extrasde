@@ -221,7 +221,7 @@ fi
 
 for pkg in com.dec05eba.gpu_screen_recorder  dev.vencord.Vesktop  org.vinegarhq.Sober; do
     if ! flatpak list | grep -q "$pkg"; then
-        if [ $package = "com.dec05eba.gpu_screen_recorder" ]; then
+        if [ $pkg = "com.dec05eba.gpu_screen_recorder" ]; then
             flatpak install --system -y com.dec05eba.gpu_screen_recorder || { echo "Error: Failed to install GPU SCREEN RECORDER"; exit 1; }
         else
             flatpak install --user -y flathub "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
