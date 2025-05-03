@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=$RESTORE_CSS_SCRIPT
+ExecStart=/home/%u/.local/bin/restore-vesktop-css.sh
 RemainAfterExit=yes
 
 [Install]
