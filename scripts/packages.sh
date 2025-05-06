@@ -320,5 +320,25 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     fi
 fi
 
+echo "Adding mangohud to exec line for sober"
+DESKTOP_FILE="$HOME/.local/share/flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+if [[ ! -f "$DESKTOP_FILE" ]]; then
+    echo "Error: $DESKTOP_FILE not found!"
+    exit 1
+fi
+
+if grep -q "Exec=mangohud" "$DESKTOP_FILE"; then
+    echo "mangohud is already present in the Exec line SKIPPED"
+else
+    sed -i '/^Exec=/ s|Exec=\(.*\)|Exec=mangohud \1|' "$DESKTOP_FILE"
+fi
+
+if grep -q "Exec=mangohud /usr/bin/flatpak run" "$DESKTOP_FILE"; then
+  echo "Successfully added mangohud to $DESKTOP_FILE"
+else
+  echo "Failed to modify $DESKTOP_FILE"
+  exit 1
+fi
+
 echo "SCript Finished"
 exit 0
