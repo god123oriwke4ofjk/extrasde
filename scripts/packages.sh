@@ -36,6 +36,8 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
 
+sudo pacman -Syy --noconfirm
+
 if ! command -v yay >/dev/null 2>&1; then
     sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
     git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
