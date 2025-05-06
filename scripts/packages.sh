@@ -51,7 +51,7 @@ else
     echo "Skipping: yay already installed"
 fi
 
-for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software mangohud; do
+for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software ; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
@@ -318,26 +318,6 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     else
         echo "Warning: $CONFIG_FILE not found. Cannot modify main.use_new_ui."
     fi
-fi
-
-echo "Adding mangohud to exec line for sober"
-DESKTOP_FILE="$HOME/.local/share/flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
-if [[ ! -f "$DESKTOP_FILE" ]]; then
-    echo "Error: $DESKTOP_FILE not found!"
-    exit 1
-fi
-
-if grep -q "Exec=mangohud" "$DESKTOP_FILE"; then
-    echo "mangohud is already present in the Exec line SKIPPED"
-else
-    sed -i '/^Exec=/ s|Exec=\(.*\)|Exec=mangohud \1|' "$DESKTOP_FILE"
-fi
-
-if grep -q "Exec=mangohud /usr/bin/flatpak run" "$DESKTOP_FILE"; then
-  echo "Successfully added mangohud to $DESKTOP_FILE"
-else
-  echo "Failed to modify $DESKTOP_FILE"
-  exit 1
 fi
 
 echo "SCript Finished"
