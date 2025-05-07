@@ -51,7 +51,8 @@ else
     echo "Skipping: yay already installed"
 fi
 
-for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software ; do
+echo "Installing pacman packages"
+for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
@@ -61,13 +62,16 @@ for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proto
     fi
 done
 
-if ! yay -Qs brave-bin >/dev/null 2>&1; then
-    yay -S --noconfirm brave-bin || { echo "Error: Failed to install brave-bin"; exit 1; }
-    echo "INSTALLED_PACKAGE: brave-bin" >> "$LOG_FILE"
-    echo "Installed brave-bin"
-else
-    echo "Skipping: brave-bin already installed"
-fi
+echo "Installing yay packages"
+for pkg in brave-bin netflix; do
+    if ! yay -Qs "$pkg" >/dev/null 2>&1; then
+        yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+        echo "Installed $pkg"
+    else
+        echo "Skipping: $pkg already installed"
+    fi
+done
 
 if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
     echo "Installing osu"
