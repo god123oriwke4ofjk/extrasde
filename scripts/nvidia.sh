@@ -29,6 +29,21 @@ check_driver() {
     fi
 }
 
+enable_nvidia_drm() {
+    local nvidia_conf="/etc/modprobe.d/nvidia.conf"
+    echo "Configuring NVIDIA DRM..."
+
+    if [[ -f "$nvidia_conf" ]] && grep -q "nvidia-drm modeset=1" "$nvidia_conf"; then
+        echo "NVIDIA DRM is already enabled in $nvidia_conf. Skipping."
+    else
+        echo "Adding 'options nvidia-drm modeset=1' to $nvidia_conf..."
+        echo "options nvidia-drm modeset=1" >> "$nvidia_conf"
+    fi
+
+    echo "Updating initramfs for NVIDIA DRM..."
+    mkinitcpio -P
+}
+
 install_nvidia() {
     echo "Installing NVIDIA proprietary driver..."
 
@@ -42,8 +57,7 @@ blacklist nouveau
 options nouveau modeset=0
 EOL
 
-    echo "Updating initramfs..."
-    mkinitcpio -P
+    enable_nvidia_drm
 
     echo "NVIDIA driver installed successfully. Reboot required."
 }
