@@ -52,7 +52,7 @@ else
 fi
 
 echo "Installing pacman packages"
-for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software pinta libreoffice; do
+for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
