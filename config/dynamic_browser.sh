@@ -7,6 +7,7 @@ declare -A browsers=(
     ["google-chrome"]="google-chrome.desktop"
     ["opera"]="opera.desktop"
     ["edge"]="microsoft-edge.desktop"
+    ["zen"]="zen.desktop"
 )
 
 LOG_FILE="$HOME/.dynamic_browser.log"
@@ -49,6 +50,7 @@ monitor_browsers() {
                 "Google-chrome") process_name="google-chrome" ;;
                 "opera" | "Opera") process_name="opera" ;;
                 "microsoft-edge" | "Microsoft-edge") process_name="edge" ;;
+                "zen" | "Zen") process_name="zen" ;;
                 *) process_name="" ;;
             esac
 
