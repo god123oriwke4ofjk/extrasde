@@ -63,7 +63,7 @@ for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proto
 done
 
 echo "Installing yay packages"
-for pkg in brave-bin netflix; do
+for pkg in brave-bin netflix qemu-full; do
     if ! yay -Qs "$pkg" >/dev/null 2>&1; then
         yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
