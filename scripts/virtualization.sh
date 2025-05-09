@@ -142,4 +142,22 @@ check_common_issues
 echo ""
 final_recommendations
 
+if pacman -Qs iptables >/dev/null 2>&1; then
+    echo "Removing potential conflicting packages"
+    sudo pacman -R iptables
+fi
+
+echo "Installing necessary pacman packages"
+for pkg in libvirt virt-manager ovmf dnsmasq ebtables; do
+    if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
+        sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+        echo "Installed $pkg"
+    else
+        echo "Skipping: $pkg already installed"
+    fi
+done
+
+
+
 exit 0
