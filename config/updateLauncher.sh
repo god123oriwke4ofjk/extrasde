@@ -14,6 +14,26 @@ get_greeting() {
     echo "$GREETING"
 }
 
+prompt_password() {
+    PASSWORD=$(yad --center --title="Authentication Required" \
+        --entry --hide-text \
+        --text="Please enter your password:" \
+        --button="OK:0" --button="Cancel:1")
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    # Validate password using sudo
+    echo "$PASSWORD" | sudo -S -v 2>/dev/null
+    if [ $? -ne 0 ]; then
+        yad --error --text="Authentication failed!"
+        return 1
+    fi
+
+    return 0
+}
+
 # Main loop
 while true; do
     GREETING=$(get_greeting)
@@ -22,9 +42,12 @@ while true; do
         --text="$GREETING" \
         --button="Update:0" --button="Exit:1"
 
-    # If Exit was pressed (exit code 1), break the loop
     if [ $? -eq 1 ]; then
         break
     fi
-done
 
+    # Ask for password before continuing
+    if ! prompt_password; then
+        continue
+    fi
+done
