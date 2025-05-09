@@ -158,6 +158,6 @@ for pkg in libvirt virt-manager ovmf dnsmasq ebtables; do
     fi
 done
 
-
+sudo systemctl enable --now libvirtd
 
 exit 0
