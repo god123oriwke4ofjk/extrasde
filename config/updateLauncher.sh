@@ -28,7 +28,47 @@ get_update_counts() {
     # Count Flatpak updates
     FLATPAK_COUNT=$(flatpak remote-ls --updates 2>/dev/null | wc -l)
 
-    echo "Available updates: Official[$OFFICIAL_COUNT], AUR[$AUR_COUNT], Flatpak[$FLATPAK_COUNT]"
+    # Return clickable links with counts
+    echo "Available updates: <a href='official'>Official[$OFFICIAL_COUNT]</a>, <a href='aur'>AUR[$AUR_COUNT]</a>, <a href='flatpak'>Flatpak[$FLATPAK_COUNT]</a>"
+}
+
+show_official_updates() {
+    # Get detailed pacman updates (name, old version -> new version)
+    UPDATES=$(pacman -Qu | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
+    if [ -z "$UPDATES" ]; then
+        UPDATES="No official updates available."
+    fi
+    echo "$UPDATES" | yad --center --title="Official Updates" \
+        --text-info \
+        --width=600 --height=400 \
+        --fontname=monospace \
+        --button="Exit:0"
+}
+
+show_aur_updates() {
+    # Get detailed AUR updates (name, old version -> new version)
+    UPDATES=$(yay -Qua | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
+    if [ -z "$UPDATES" ]; then
+        UPDATES="No AUR updates available."
+    fi
+    echo "$UPDATES" | yad --center --title="AUR Updates" \
+        --text-info \
+        --width=600 --height=400 \
+        --fontname=monospace \
+        --button="Exit:0"
+}
+
+show_flatpak_updates() {
+    # Get Flatpak updates (name and branch, as version info is less detailed)
+    UPDATES=$(flatpak remote-ls --updates 2>/dev/null | awk '{print $1 " (Branch: " $2 ")"}')
+    if [ -z "$UPDATES" ]; then
+        UPDATES="No Flatpak updates available."
+    fi
+    echo "$UPDATES" | yad --center --title="Flatpak Updates" \
+        --text-info \
+        --width=600 --height=400 \
+        --fontname=monospace \
+        --button="Exit:0"
 }
 
 prompt_password() {
@@ -147,8 +187,27 @@ main_menu() {
     UPDATE_INFO=$(get_update_counts)
     yad --center --title="System Update" \
         --text="$GREETING\n\n$UPDATE_INFO" \
+        --width=400 --height=200 \
+        --html \
+        --uri-handler="$0" \
         --button="Update:0" --button="Exit:1"
 }
+
+# Handle URI clicks
+case "$1" in
+    official)
+        show_official_updates
+        exit 0
+        ;;
+    aur)
+        show_aur_updates
+        exit 0
+        ;;
+    flatpak)
+        show_flatpak_updates
+        exit 0
+        ;;
+esac
 
 # Run flow
 while true; do
