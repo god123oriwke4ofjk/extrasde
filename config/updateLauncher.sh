@@ -39,37 +39,39 @@ prompt_password() {
 launch_updater_ui() {
     BASE_TEXT="<b>Updating... please do not shut down your computer.</b>"
     OUTPUT_PID=""
-    OUTPUT_WIN_SHOWN=false
 
     echo "[DEBUG] Starting update script..."
-    ( bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1; echo DONE >> "$LOGFILE" ) &
+    (
+        bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1
+        echo DONE >> "$LOGFILE"
+    ) &
 
     while true; do
-        echo "[DEBUG] Showing main update window. Output shown: $OUTPUT_WIN_SHOWN"
-        BUTTON=$(yad --center --title="System Update" \
+        echo "[DEBUG] Showing main update window. Output shown: $OUTPUT_PID"
+        yad --center --title="System Update" \
             --text="$BASE_TEXT" \
             --width=400 --height=150 \
             --on-top \
-            --button="Show Output:100" --button="Hide Output:101" --button="Exit:102")
+            --button="Show Output:100" --button="Hide Output:101" --button="Exit:102"
+
+        BUTTON=$?
+        echo "[DEBUG] Button clicked: $BUTTON"
 
         case $BUTTON in
             100)
                 echo "[DEBUG] Show Output clicked"
-                if ! $OUTPUT_WIN_SHOWN; then
-                    (
-                        tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                            --text-info \
-                            --width=600 --height=400 \
-                            --center \
-                            --no-buttons \
-                            --fontname=monospace \
-                            --on-top \
-                            --skip-taskbar \
-                            --borders=10 \
-                            --window-icon=system-run
-                    ) &
+                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                        --text-info \
+                        --width=600 --height=400 \
+                        --center \
+                        --no-buttons \
+                        --fontname=monospace \
+                        --on-top \
+                        --skip-taskbar \
+                        --borders=10 \
+                        --window-icon=system-run ) &
                     OUTPUT_PID=$!
-                    OUTPUT_WIN_SHOWN=true
                     echo "[DEBUG] Output window PID: $OUTPUT_PID"
                 fi
                 ;;
@@ -77,32 +79,25 @@ launch_updater_ui() {
                 echo "[DEBUG] Hide Output clicked"
                 if [ -n "$OUTPUT_PID" ]; then
                     kill $OUTPUT_PID 2>/dev/null
-                    wait $OUTPUT_PID 2>/dev/null
                     OUTPUT_PID=""
-                    OUTPUT_WIN_SHOWN=false
                     echo "[DEBUG] Output window closed"
                 fi
                 ;;
             102)
                 echo "[DEBUG] Exit clicked"
-                if [ -n "$OUTPUT_PID" ]; then
-                    kill $OUTPUT_PID 2>/dev/null
-                    wait $OUTPUT_PID 2>/dev/null
-                fi
                 return
                 ;;
         esac
 
-        if grep -q DONE "$LOGFILE"; then
-            echo "[DEBUG] Update finished"
-            [ -n "$OUTPUT_PID" ] && kill $OUTPUT_PID 2>/dev/null && wait $OUTPUT_PID
-            OUTPUT_PID=""
+        grep -q DONE "$LOGFILE"
+        if [ $? -eq 0 ]; then
+            echo "[DEBUG] Update finished, closing output window"
+            [ -n "$OUTPUT_PID" ] && kill $OUTPUT_PID 2>/dev/null
             break
         fi
         sleep 1
     done
 
-    echo "[DEBUG] Closing main update window and showing reboot prompt..."
     post_update_prompt
 }
 
