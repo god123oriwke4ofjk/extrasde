@@ -37,20 +37,59 @@ prompt_password() {
 }
 
 launch_updater_ui() {
-    tail -f "$LOGFILE" | yad --title="System Update" \
-        --text="<b>Updating... please do not shut down your computer.</b>" \
-        --width=600 --height=500 \
+    BASE_TEXT="<b>Updating... please do not shut down your computer.</b>"
+
+    OUTPUT_VISIBLE=false
+
+    (
+        bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1
+        echo DONE >> "$LOGFILE"
+    ) &
+
+    # Start monitoring output in a hidden window (we will show/hide it later)
+    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+        --text-info \
+        --width=600 --height=400 \
         --center \
         --no-buttons \
+        --fontname=monospace \
         --on-top \
-        --button="Hide Output":100 \
-        --text-info --fontname=monospace &
-    TAIL_PID=$!
+        --skip-taskbar \
+        --borders=10 \
+        --window-icon=system-run ) &
+    OUTPUT_PID=$!
 
-    (bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1; kill $TAIL_PID) &
-    WAIT_PID=$!
+    while true; do
+        BUTTON=$(yad --center --title="System Update" \
+            --text="$BASE_TEXT" \
+            --width=400 --height=150 \
+            --on-top \
+            --button="Show Output":0 --button="Hide Output":1)
 
-    while kill -0 $TAIL_PID 2>/dev/null; do
+        if [ "$BUTTON" -eq 0 ]; then
+            # Show output window
+            if ! ps -p $OUTPUT_PID > /dev/null; then
+                ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                    --text-info \
+                    --width=600 --height=400 \
+                    --center \
+                    --no-buttons \
+                    --fontname=monospace \
+                    --on-top \
+                    --skip-taskbar \
+                    --borders=10 \
+                    --window-icon=system-run ) &
+                OUTPUT_PID=$!
+            fi
+        elif [ "$BUTTON" -eq 1 ]; then
+            kill $OUTPUT_PID 2>/dev/null
+        fi
+
+        grep -q DONE "$LOGFILE"
+        if [ $? -eq 0 ]; then
+            kill $OUTPUT_PID 2>/dev/null
+            break
+        fi
         sleep 1
     done
 
