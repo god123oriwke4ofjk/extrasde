@@ -106,15 +106,20 @@ launch_updater_ui() {
     UPDATE_PID=$!
     echo "[DEBUG] Update process PID: $UPDATE_PID"
 
-    # Show main update window
-    echo "[DEBUG] Opening main update window"
-    yad --center --title="System Update" \
-        --text="$BASE_TEXT" \
-        --width=400 --height=150 \
-        --on-top \
-        --button="Show Output:100" &
-    MAIN_PID=$!
-    echo "[DEBUG] Main window PID: $MAIN_PID"
+    # Function to open main window
+    open_main_window() {
+        echo "[DEBUG] Opening main update window"
+        yad --center --title="System Update" \
+            --text="$BASE_TEXT" \
+            --width=400 --height=150 \
+            --on-top \
+            --button="Show Output:100" &
+        MAIN_PID=$!
+        echo "[DEBUG] Main window PID: $MAIN_PID"
+    }
+
+    # Initial main window
+    open_main_window
 
     while true; do
         # Check if update is done
@@ -124,14 +129,14 @@ launch_updater_ui() {
             echo "[DEBUG] Update finished, closing windows"
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
                 echo "[DEBUG] Killing output window PID: $OUTPUT_PID"
-                kill $OUTPUT_PID 2>/dev/null
+                kill -9 $OUTPUT_PID 2>/dev/null
                 wait $OUTPUT_PID 2>/dev/null
                 echo "[DEBUG] Output window closed"
                 OUTPUT_PID=""
             fi
             if [ -n "$MAIN_PID" ] && ps -p $MAIN_PID > /dev/null 2>&1; then
                 echo "[DEBUG] Killing main window PID: $MAIN_PID"
-                kill $MAIN_PID 2>/dev/null
+                kill -9 $MAIN_PID 2>/dev/null
                 wait $MAIN_PID 2>/dev/null
                 echo "[DEBUG] Main window closed"
                 MAIN_PID=""
@@ -141,54 +146,56 @@ launch_updater_ui() {
         fi
 
         # Check if main window is still open
-        if ! ps -p $MAIN_PID > /dev/null 2>&1; then
+        if [ -n "$MAIN_PID" ] && ! ps -p $MAIN_PID > /dev/null 2>&1; then
             echo "[DEBUG] Main window closed unexpectedly"
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
                 echo "[DEBUG] Killing output window PID: $OUTPUT_PID due to main window closure"
-                kill $OUTPUT_PID 2>/dev/null
+                kill -9 $OUTPUT_PID 2>/dev/null
                 wait $OUTPUT_PID 2>/dev/null
                 echo "[DEBUG] Output window closed"
             fi
             echo "[DEBUG] Killing update process PID: $UPDATE_PID"
-            kill $UPDATE_PID 2>/dev/null
+            kill -9 $UPDATE_PID 2>/dev/null
             wait $UPDATE_PID 2>/dev/null
             echo "[DEBUG] Exiting due to main window closure"
             return
         fi
 
-        # Check for button clicks non-blocking
-        if wait -n $MAIN_PID 2>/dev/null; then
-            BUTTON=$?
-            echo "[DEBUG] Button clicked: $BUTTON"
-            if [ $BUTTON -eq 100 ]; then
-                echo "[DEBUG] Show Output clicked"
-                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                    echo "[DEBUG] Opening output window"
-                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                        --text-info \
-                        --width=600 --height=400 \
-                        --center \
-                        --button="Exit:0" \
-                        --fontname="Monospace" \
-                        --on-top \
-                        --skip-taskbar \
-                        --borders=10 \
-                        --window-icon=system-run ) &
-                    OUTPUT_PID=$!
-                    echo "[DEBUG] Output window PID: $OUTPUT_PID"
-                else
-                    echo "[DEBUG] Output window already open, PID: $OUTPUT_PID"
-                fi
-            fi
-            # Restart main window
-            echo "[DEBUG] Reopening main update window after button click"
-            yad --center --title="System Update" \
+        # Check for button clicks using a pipe
+        if [ -n "$MAIN_PID" ]; then
+            echo "[DEBUG] Checking for button click on main window PID: $MAIN_PID"
+            ( echo 0; sleep 0.1 ) | yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
                 --width=400 --height=150 \
                 --on-top \
                 --button="Show Output:100" &
-            MAIN_PID=$!
-            echo "[DEBUG] New main window PID: $MAIN_PID"
+            NEW_PID=$!
+            if [ "$NEW_PID" != "$MAIN_PID" ]; then
+                echo "[DEBUG] Button clicked, replacing main window PID: $MAIN_PID with $NEW_PID"
+                kill $MAIN_PID 2>/dev/null
+                MAIN_PID=$NEW_PID
+                BUTTON=100
+                if [ $BUTTON -eq 100 ]; then
+                    echo "[DEBUG] Show Output clicked"
+                    if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                        echo "[DEBUG] Opening output window"
+                        ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                            --text-info \
+                            --width=600 --height=400 \
+                            --center \
+                            --button="Exit:0" \
+                            --fontname="Monospace" \
+                            --on-top \
+                            --skip-taskbar \
+                            --borders=10 \
+                            --window-icon=system-run ) &
+                        OUTPUT_PID=$!
+                        echo "[DEBUG] Output window PID: $OUTPUT_PID"
+                    else
+                        echo "[DEBUG] Output window already open, PID: $OUTPUT_PID"
+                    fi
+                fi
+            fi
         fi
 
         sleep 0.1  # Prevent excessive CPU usage
