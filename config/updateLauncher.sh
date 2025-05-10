@@ -19,16 +19,21 @@ get_greeting() {
 }
 
 get_update_counts() {
+    # Count official pacman updates
     OFFICIAL_COUNT=$(pacman -Qu 2>/dev/null | wc -l)
     
+    # Count AUR updates (assuming yay as AUR helper, replace with paru if needed)
     AUR_COUNT=$(yay -Qua 2>/dev/null | wc -l)
     
+    # Count Flatpak updates
     FLATPAK_COUNT=$(flatpak remote-ls --updates 2>/dev/null | wc -l)
 
+    # Return clickable links with counts
     echo "Available updates: <a href='official'>Official[$OFFICIAL_COUNT]</a>, <a href='aur'>AUR[$AUR_COUNT]</a>, <a href='flatpak'>Flatpak[$FLATPAK_COUNT]</a>"
 }
 
 show_official_updates() {
+    # Get detailed pacman updates (name, old version -> new version)
     UPDATES=$(pacman -Qu | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No official updates available."
@@ -41,6 +46,7 @@ show_official_updates() {
 }
 
 show_aur_updates() {
+    # Get detailed AUR updates (name, old version -> new version)
     UPDATES=$(yay -Qua | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No AUR updates available."
@@ -53,6 +59,7 @@ show_aur_updates() {
 }
 
 show_flatpak_updates() {
+    # Get Flatpak updates (name and branch)
     UPDATES=$(flatpak remote-ls --updates 2>/dev/null | awk '{print $1 " (Branch: " $2 ")"}')
     if [ -z "$UPDATES" ]; then
         UPDATES="No Flatpak updates available."
@@ -96,6 +103,7 @@ launch_updater_ui() {
 
     UPDATE_PID=$!
 
+    # Show main update window
     yad --center --title="System Update" \
         --text="$BASE_TEXT" \
         --width=400 --height=150 \
@@ -104,6 +112,7 @@ launch_updater_ui() {
     MAIN_PID=$!
 
     while true; do
+        # Check if update is done
         grep -q DONE "$LOGFILE"
         if [ $? -eq 0 ]; then
             echo "[DEBUG] Update finished, closing windows"
@@ -120,7 +129,9 @@ launch_updater_ui() {
             break
         fi
 
+        # Check if main window is still open
         if ! ps -p $MAIN_PID > /dev/null 2>&1; then
+            # Main window was closed manually, clean up and exit
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
                 kill $OUTPUT_PID 2>/dev/null
                 wait $OUTPUT_PID 2>/dev/null
@@ -130,6 +141,7 @@ launch_updater_ui() {
             return
         fi
 
+        # Check for button clicks by reading the exit status of the last yad instance
         wait $MAIN_PID
         BUTTON=$?
         echo "[DEBUG] Button clicked: $BUTTON"
@@ -163,6 +175,7 @@ launch_updater_ui() {
                 ;;
         esac
 
+        # Restart main window if it was closed by a button
         if [ -n "$BUTTON" ] && [ $BUTTON -eq 100 ] || [ $BUTTON -eq 101 ]; then
             yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
@@ -197,6 +210,7 @@ main_menu() {
         --button="Update:0" --button="Exit:1"
 }
 
+# Handle URI clicks
 case "$1" in
     official)
         show_official_updates
@@ -212,6 +226,7 @@ case "$1" in
         ;;
 esac
 
+# Run flow
 while true; do
     main_menu
     [ $? -ne 0 ] && break
