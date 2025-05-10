@@ -61,7 +61,7 @@ show_aur_updates() {
 show_flatpak_updates() {
     # Get Flatpak updates (name and branch)
     UPDATES=$(flatpak remote-ls --updates 2>/dev/null | awk '{print $1 " (Branch: " $2 ")"}')
-    if [ -n "$UPDATES" ]; then
+    if [ -z "$UPDATES" ]; then
         UPDATES="No Flatpak updates available."
     fi
     echo "$UPDATES" | yad --center --title="Flatpak Updates" \
@@ -113,7 +113,7 @@ launch_updater_ui() {
             --text="$BASE_TEXT" \
             --width=400 --height=150 \
             --on-top \
-            --no-buttons &
+            --button="Show Output:100" &
         MAIN_PID=$!
         echo "[DEBUG] Main window PID: $MAIN_PID"
     }
@@ -151,9 +151,7 @@ launch_updater_ui() {
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
                 echo "[DEBUG] Killing output window PID: $OUTPUT_PID due to main window closure"
                 kill -9 $OUTPUT_PID 2>/dev/null
-                wait $OUTPUT_PID 2>/dev_tensors
-                outputs = tf.keras.layers.Dense(10, activation='softmax')(dense)
-                model = tf.keras.Model(inputs=inputs, outputs=outputs)
+                wait $OUTPUT_PID 2>/dev/null
                 echo "[DEBUG] Output window closed"
             fi
             echo "[DEBUG] Killing update process PID: $UPDATE_PID"
