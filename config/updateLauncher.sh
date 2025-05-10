@@ -19,21 +19,16 @@ get_greeting() {
 }
 
 get_update_counts() {
-    # Count official pacman updates
     OFFICIAL_COUNT=$(pacman -Qu 2>/dev/null | wc -l)
     
-    # Count AUR updates (assuming yay as AUR helper, replace with paru if needed)
     AUR_COUNT=$(yay -Qua 2>/dev/null | wc -l)
     
-    # Count Flatpak updates
     FLATPAK_COUNT=$(flatpak remote-ls --updates 2>/dev/null | wc -l)
 
-    # Return clickable links with counts
     echo "Available updates: <a href='official'>Official[$OFFICIAL_COUNT]</a>, <a href='aur'>AUR[$AUR_COUNT]</a>, <a href='flatpak'>Flatpak[$FLATPAK_COUNT]</a>"
 }
 
 show_official_updates() {
-    # Get detailed pacman updates (name, old version -> new version)
     UPDATES=$(pacman -Qu | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No official updates available."
@@ -41,12 +36,11 @@ show_official_updates() {
     echo "$UPDATES" | yad --center --title="Official Updates" \
         --text-info \
         --width=600 --height=400 \
-        --fontname=monospace \
+        --fontname="Monospace" \
         --button="Exit:0"
 }
 
 show_aur_updates() {
-    # Get detailed AUR updates (name, old version -> new version)
     UPDATES=$(yay -Qua | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No AUR updates available."
@@ -54,12 +48,11 @@ show_aur_updates() {
     echo "$UPDATES" | yad --center --title="AUR Updates" \
         --text-info \
         --width=600 --height=400 \
-        --fontname=monospace \
+        --fontname="Monospace" \
         --button="Exit:0"
 }
 
 show_flatpak_updates() {
-    # Get Flatpak updates (name and branch, as version info is less detailed)
     UPDATES=$(flatpak remote-ls --updates 2>/dev/null | awk '{print $1 " (Branch: " $2 ")"}')
     if [ -z "$UPDATES" ]; then
         UPDATES="No Flatpak updates available."
@@ -67,7 +60,7 @@ show_flatpak_updates() {
     echo "$UPDATES" | yad --center --title="Flatpak Updates" \
         --text-info \
         --width=600 --height=400 \
-        --fontname=monospace \
+        --fontname="Monospace" \
         --button="Exit:0"
 }
 
@@ -98,78 +91,89 @@ launch_updater_ui() {
     echo "[DEBUG] Starting update script..."
     (
         bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1
-        echo DONE >> "$LOGFILE"
+        echo DONE >>"$LOGFILE"
     ) &
 
-    (
-        while true; do
-            echo "[DEBUG] Showing main update window. Output shown: $OUTPUT_PID"
+    UPDATE_PID=$!
+
+    yad --center --title="System Update" \
+        --text="$BASE_TEXT" \
+        --width=400 --height=150 \
+        --on-top \
+        --button="Show Output:100" --button="Hide Output:101" &
+    MAIN_PID=$!
+
+    while true; do
+        grep -q DONE "$LOGFILE"
+        if [ $? -eq 0 ]; then
+            echo "[DEBUG] Update finished, closing windows"
+            if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                kill $OUTPUT_PID 2>/dev/null
+                wait $OUTPUT_PID 2>/dev/null
+                echo "[DEBUG] Output window closed"
+            fi
+            if [ -n "$MAIN_PID" ] && ps -p $MAIN_PID > /dev/null 2>&1; then
+                kill $MAIN_PID 2>/dev/null
+                wait $MAIN_PID 2>/dev/null
+                echo "[DEBUG] Main window closed"
+            fi
+            break
+        fi
+
+        if ! ps -p $MAIN_PID > /dev/null 2>&1; then
+            if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                kill $OUTPUT_PID 2>/dev/null
+                wait $OUTPUT_PID 2>/dev/null
+            fi
+            kill $UPDATE_PID 2>/dev/null
+            wait $UPDATE_PID 2>/dev/null
+            return
+        fi
+
+        wait $MAIN_PID
+        BUTTON=$?
+        echo "[DEBUG] Button clicked: $BUTTON"
+
+        case $BUTTON in
+            100)
+                echo "[DEBUG] Show Output clicked"
+                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                        --text-info \
+                        --width=600 --height=400 \
+                        --center \
+                        --no-buttons \
+                        --fontname="Monospace" \
+                        --on-top \
+                        --skip-taskbar \
+                        --borders=10 \
+                        --window-icon=system-run ) &
+                    OUTPUT_PID=$!
+                    echo "[DEBUG] Output window PID: $OUTPUT_PID"
+                fi
+                ;;
+            101)
+                echo "[DEBUG] Hide Output clicked"
+                if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                    kill $OUTPUT_PID 2>/dev/null
+                    wait $OUTPUT_PID 2>/dev/null
+                    OUTPUT_PID=""
+                    echo "[DEBUG] Output window closed"
+                fi
+                ;;
+        esac
+
+        if [ -n "$BUTTON" ] && [ $BUTTON -eq 100 ] || [ $BUTTON -eq 101 ]; then
             yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
                 --width=400 --height=150 \
                 --on-top \
-                --button="Show Output:100" --button="Hide Output:101" --button="Exit:102" &
-
+                --button="Show Output:100" --button="Hide Output:101" &
             MAIN_PID=$!
-            wait $MAIN_PID
-            BUTTON=$?
-            echo "[DEBUG] Button clicked: $BUTTON"
+        fi
+    done
 
-            case $BUTTON in
-                100)
-                    echo "[DEBUG] Show Output clicked"
-                    if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                        ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                            --text-info \
-                            --width=600 --height=400 \
-                            --center \
-                            --no-buttons \
-                            --fontname=monospace \
-                            --on-top \
-                            --skip-taskbar \
-                            --borders=10 \
-                            --window-icon=system-run ) &
-                        OUTPUT_PID=$!
-                        echo "[DEBUG] Output window PID: $OUTPUT_PID"
-                    fi
-                    ;;
-                101)
-                    echo "[DEBUG] Hide Output clicked"
-                    if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                        kill $OUTPUT_PID 2>/dev/null
-                        wait $OUTPUT_PID 2>/dev/null
-                        OUTPUT_PID=""
-                        echo "[DEBUG] Output window closed"
-                    fi
-                    ;;
-                102)
-                    echo "[DEBUG] Exit clicked"
-                    if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                        kill $OUTPUT_PID 2>/dev/null
-                        wait $OUTPUT_PID 2>/dev/null
-                    fi
-                    return
-                    ;;
-            esac
-
-            grep -q DONE "$LOGFILE"
-            if [ $? -eq 0 ]; then
-                echo "[DEBUG] Update finished, closing output window"
-                if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                    kill $OUTPUT_PID 2>/dev/null
-                    wait $OUTPUT_PID 2>/dev/null
-                fi
-                if [ -n "$MAIN_PID" ] && ps -p $MAIN_PID > /dev/null 2>&1; then
-                    kill $MAIN_PID 2>/dev/null
-                    wait $MAIN_PID 2>/dev/null
-                fi
-                break
-            fi
-            sleep 1
-        done
-    ) &
-
-    wait
+    wait $UPDATE_PID 2>/dev/null
     post_update_prompt
 }
 
@@ -193,7 +197,6 @@ main_menu() {
         --button="Update:0" --button="Exit:1"
 }
 
-# Handle URI clicks
 case "$1" in
     official)
         show_official_updates
@@ -209,7 +212,6 @@ case "$1" in
         ;;
 esac
 
-# Run flow
 while true; do
     main_menu
     [ $? -ne 0 ] && break
