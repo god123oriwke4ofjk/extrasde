@@ -151,7 +151,7 @@ launch_updater_ui() {
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
                 echo "[DEBUG] Killing output window PID: $OUTPUT_PID due to main window closure"
                 kill -9 $OUTPUT_PID 2>/dev/null
-                wait $OUTPUT_PID 2>/dev_tensors = tf.keras.layers.Dense(512, activation='relu')(inputs)
+                wait $OUTPUT_PID 2>/dev_tensors
                 outputs = tf.keras.layers.Dense(10, activation='softmax')(dense)
                 model = tf.keras.Model(inputs=inputs, outputs=outputs)
                 echo "[DEBUG] Output window closed"
