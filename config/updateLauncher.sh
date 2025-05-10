@@ -47,9 +47,7 @@ show_official_updates() {
 
 show_aur_updates() {
     # Get detailed AUR updates (name, old version -> new version)
-    UPDATES=$(yay -Qua | awk '{
-
-print $1 " " $2 " -> " $4}' 2>/dev/null)
+    UPDATES=$(yay -Qua | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No AUR updates available."
     fi
@@ -143,33 +141,30 @@ launch_updater_ui() {
             return
         fi
 
-        # Check for button clicks by reading the exit status of the last yad instance
-        wait $MAIN_PID
-        BUTTON=$?
-        echo "[DEBUG] Button clicked: $BUTTON"
-
-        case $BUTTON in
-            100)
-                echo "[DEBUG] Show Output clicked"
-                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                        --text-info \
-                        --width=600 --height=400 \
-                        --center \
-                        --button="Exit:0" \
-                        --fontname="Monospace" \
-                        --on-top \
-                        --skip-taskbar \
-                        --borders=10 \
-                        --window-icon=system-run ) &
-                    OUTPUT_PID=$!
-                    echo "[DEBUG] Output window PID: $OUTPUT_PID"
-                fi
-                ;;
-        esac
-
-        # Restart main window if it was closed by a button
-        if [ -n "$BUTTON" ] && [ $BUTTON -eq 100 ]; then
+        # Non-blocking check for button clicks
+        if wait -n $MAIN_PID 2>/dev/null; then
+            BUTTON=$?
+            echo "[DEBUG] Button clicked: $BUTTON"
+            case $BUTTON in
+                100)
+                    echo "[DEBUG] Show Output clicked"
+                    if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                        ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                            --text-info \
+                            --width=600 --height=400 \
+                            --center \
+                            --button="Exit:0" \
+                            --fontname="Monospace" \
+                            --on-top \
+                            --skip-taskbar \
+                            --borders=10 \
+                            --window-icon=system-run ) &
+                        OUTPUT_PID=$!
+                        echo "[DEBUG] Output window PID: $OUTPUT_PID"
+                    fi
+                    ;;
+            esac
+            # Restart main window after button click
             yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
                 --width=400 --height=150 \
@@ -177,6 +172,8 @@ launch_updater_ui() {
                 --button="Show Output:100" &
             MAIN_PID=$!
         fi
+
+        sleep 0.1  # Prevent excessive CPU usage
     done
 
     wait $UPDATE_PID 2>/dev/null
