@@ -39,6 +39,7 @@ prompt_password() {
 launch_updater_ui() {
     BASE_TEXT="<b>Updating... please do not shut down your computer.</b>"
 
+    OUTPUT_PID=""
     OUTPUT_VISIBLE=false
 
     (
@@ -46,48 +47,43 @@ launch_updater_ui() {
         echo DONE >> "$LOGFILE"
     ) &
 
-    # Start monitoring output in a hidden window (we will show/hide it later)
-    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-        --text-info \
-        --width=600 --height=400 \
-        --center \
-        --no-buttons \
-        --fontname=monospace \
-        --on-top \
-        --skip-taskbar \
-        --borders=10 \
-        --window-icon=system-run ) &
-    OUTPUT_PID=$!
-
     while true; do
         BUTTON=$(yad --center --title="System Update" \
             --text="$BASE_TEXT" \
             --width=400 --height=150 \
             --on-top \
-            --button="Show Output":0 --button="Hide Output":1)
+            --button="Show Output:100" --button="Hide Output:101" --button="Exit:102")
 
-        if [ "$BUTTON" -eq 0 ]; then
-            # Show output window
-            if ! ps -p $OUTPUT_PID > /dev/null; then
-                ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                    --text-info \
-                    --width=600 --height=400 \
-                    --center \
-                    --no-buttons \
-                    --fontname=monospace \
-                    --on-top \
-                    --skip-taskbar \
-                    --borders=10 \
-                    --window-icon=system-run ) &
-                OUTPUT_PID=$!
-            fi
-        elif [ "$BUTTON" -eq 1 ]; then
-            kill $OUTPUT_PID 2>/dev/null
-        fi
+        case $BUTTON in
+            100)
+                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                        --text-info \
+                        --width=600 --height=400 \
+                        --center \
+                        --no-buttons \
+                        --fontname=monospace \
+                        --on-top \
+                        --skip-taskbar \
+                        --borders=10 \
+                        --window-icon=system-run ) &
+                    OUTPUT_PID=$!
+                fi
+                ;;
+            101)
+                if [ -n "$OUTPUT_PID" ]; then
+                    kill $OUTPUT_PID 2>/dev/null
+                    OUTPUT_PID=""
+                fi
+                ;;
+            102)
+                return
+                ;;
+        esac
 
         grep -q DONE "$LOGFILE"
         if [ $? -eq 0 ]; then
-            kill $OUTPUT_PID 2>/dev/null
+            [ -n "$OUTPUT_PID" ] && kill $OUTPUT_PID 2>/dev/null
             break
         fi
         sleep 1
@@ -121,5 +117,4 @@ while true; do
         launch_updater_ui
         break
     fi
-
 done
