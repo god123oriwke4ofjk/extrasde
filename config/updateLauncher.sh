@@ -95,103 +95,128 @@ launch_updater_ui() {
     OUTPUT_PID=""
     MAIN_PID=""
 
-    echo "[DEBUG] Starting update script..."
+    echo "[DEBUG] Starting update script with PID: $$"
     (
+        echo "[DEBUG] Running update.sh"
         bash "$UPDATE_SCRIPT" >>"$LOGFILE" 2>&1
+        echo "[DEBUG] update.sh completed"
         echo DONE >>"$LOGFILE"
     ) &
 
     UPDATE_PID=$!
+    echo "[DEBUG] Update process PID: $UPDATE_PID"
 
     # Show main update window
+    echo "[DEBUG] Opening main update window"
     yad --center --title="System Update" \
         --text="$BASE_TEXT" \
         --width=400 --height=150 \
         --on-top \
         --button="Show Output:100" &
     MAIN_PID=$!
+    echo "[DEBUG] Main window PID: $MAIN_PID"
 
     while true; do
         # Check if update is done
+        echo "[DEBUG] Checking for DONE in $LOGFILE"
         grep -q DONE "$LOGFILE"
         if [ $? -eq 0 ]; then
             echo "[DEBUG] Update finished, closing windows"
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                echo "[DEBUG] Killing output window PID: $OUTPUT_PID"
                 kill $OUTPUT_PID 2>/dev/null
                 wait $OUTPUT_PID 2>/dev/null
                 echo "[DEBUG] Output window closed"
+                OUTPUT_PID=""
             fi
             if [ -n "$MAIN_PID" ] && ps -p $MAIN_PID > /dev/null 2>&1; then
+                echo "[DEBUG] Killing main window PID: $MAIN_PID"
                 kill $MAIN_PID 2>/dev/null
                 wait $MAIN_PID 2>/dev/null
                 echo "[DEBUG] Main window closed"
+                MAIN_PID=""
             fi
+            echo "[DEBUG] Breaking loop to show reboot prompt"
             break
         fi
 
         # Check if main window is still open
         if ! ps -p $MAIN_PID > /dev/null 2>&1; then
-            # Main window was closed manually, clean up and exit
+            echo "[DEBUG] Main window closed unexpectedly"
             if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                echo "[DEBUG] Killing output window PID: $OUTPUT_PID due to main window closure"
                 kill $OUTPUT_PID 2>/dev/null
                 wait $OUTPUT_PID 2>/dev/null
+                echo "[DEBUG] Output window closed"
             fi
+            echo "[DEBUG] Killing update process PID: $UPDATE_PID"
             kill $UPDATE_PID 2>/dev/null
             wait $UPDATE_PID 2>/dev/null
+            echo "[DEBUG] Exiting due to main window closure"
             return
         fi
 
-        # Non-blocking check for button clicks
+        # Check for button clicks non-blocking
         if wait -n $MAIN_PID 2>/dev/null; then
             BUTTON=$?
             echo "[DEBUG] Button clicked: $BUTTON"
-            case $BUTTON in
-                100)
-                    echo "[DEBUG] Show Output clicked"
-                    if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                        ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
-                            --text-info \
-                            --width=600 --height=400 \
-                            --center \
-                            --button="Exit:0" \
-                            --fontname="Monospace" \
-                            --on-top \
-                            --skip-taskbar \
-                            --borders=10 \
-                            --window-icon=system-run ) &
-                        OUTPUT_PID=$!
-                        echo "[DEBUG] Output window PID: $OUTPUT_PID"
-                    fi
-                    ;;
-            esac
-            # Restart main window after button click
+            if [ $BUTTON -eq 100 ]; then
+                echo "[DEBUG] Show Output clicked"
+                if [ -z "$OUTPUT_PID" ] || ! ps -p $OUTPUT_PID > /dev/null 2>&1; then
+                    echo "[DEBUG] Opening output window"
+                    ( tail -n 100 -f "$LOGFILE" | yad --title="Update Output" \
+                        --text-info \
+                        --width=600 --height=400 \
+                        --center \
+                        --button="Exit:0" \
+                        --fontname="Monospace" \
+                        --on-top \
+                        --skip-taskbar \
+                        --borders=10 \
+                        --window-icon=system-run ) &
+                    OUTPUT_PID=$!
+                    echo "[DEBUG] Output window PID: $OUTPUT_PID"
+                else
+                    echo "[DEBUG] Output window already open, PID: $OUTPUT_PID"
+                fi
+            fi
+            # Restart main window
+            echo "[DEBUG] Reopening main update window after button click"
             yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
                 --width=400 --height=150 \
                 --on-top \
                 --button="Show Output:100" &
             MAIN_PID=$!
+            echo "[DEBUG] New main window PID: $MAIN_PID"
         fi
 
         sleep 0.1  # Prevent excessive CPU usage
     done
 
+    echo "[DEBUG] Waiting for update process to fully complete"
     wait $UPDATE_PID 2>/dev/null
+    echo "[DEBUG] Calling post_update_prompt"
     post_update_prompt
 }
 
 post_update_prompt() {
+    echo "[DEBUG] Showing reboot prompt"
     CHOICE=$(yad --center --title="Update Finished" \
         --text="Update complete.\n\nIt is recommended to reboot your computer." \
         --button="Reboot now:0" --button="Reboot later:1")
     if [ "$?" -eq 0 ]; then
+        echo "[DEBUG] Reboot now selected"
         systemctl reboot
+    else
+        echo "[DEBUG] Reboot later selected"
     fi
 }
 
 main_menu() {
     GREETING=$(get_greeting)
     UPDATE_INFO=$(get_update_counts)
+    echo "[DEBUG] Showing main menu"
     yad --center --title="System Update" \
         --text="$GREETING\n\n$UPDATE_INFO" \
         --width=400 --height=200 \
@@ -217,12 +242,16 @@ case "$1" in
 esac
 
 # Run flow
+echo "[DEBUG] Starting main loop"
 while true; do
     main_menu
     [ $? -ne 0 ] && break
 
+    echo "[DEBUG] Prompting for password"
     if prompt_password; then
+        echo "[DEBUG] Password accepted, launching updater UI"
         launch_updater_ui
         break
     fi
+    echo "[DEBUG] Password prompt failed or cancelled"
 done
