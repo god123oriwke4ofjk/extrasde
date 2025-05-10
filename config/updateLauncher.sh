@@ -47,7 +47,9 @@ show_official_updates() {
 
 show_aur_updates() {
     # Get detailed AUR updates (name, old version -> new version)
-    UPDATES=$(yay -Qua | awk '{print $1 " " $2 " -> " $4}' 2>/dev/null)
+    UPDATES=$(yay -Qua | awk '{
+
+print $1 " " $2 " -> " $4}' 2>/dev/null)
     if [ -z "$UPDATES" ]; then
         UPDATES="No AUR updates available."
     fi
@@ -108,7 +110,7 @@ launch_updater_ui() {
         --text="$BASE_TEXT" \
         --width=400 --height=150 \
         --on-top \
-        --button="Show Output:100" --button="Hide Output:101" &
+        --button="Show Output:100" &
     MAIN_PID=$!
 
     while true; do
@@ -154,7 +156,7 @@ launch_updater_ui() {
                         --text-info \
                         --width=600 --height=400 \
                         --center \
-                        --no-buttons \
+                        --button="Exit:0" \
                         --fontname="Monospace" \
                         --on-top \
                         --skip-taskbar \
@@ -164,24 +166,15 @@ launch_updater_ui() {
                     echo "[DEBUG] Output window PID: $OUTPUT_PID"
                 fi
                 ;;
-            101)
-                echo "[DEBUG] Hide Output clicked"
-                if [ -n "$OUTPUT_PID" ] && ps -p $OUTPUT_PID > /dev/null 2>&1; then
-                    kill $OUTPUT_PID 2>/dev/null
-                    wait $OUTPUT_PID 2>/dev/null
-                    OUTPUT_PID=""
-                    echo "[DEBUG] Output window closed"
-                fi
-                ;;
         esac
 
         # Restart main window if it was closed by a button
-        if [ -n "$BUTTON" ] && [ $BUTTON -eq 100 ] || [ $BUTTON -eq 101 ]; then
+        if [ -n "$BUTTON" ] && [ $BUTTON -eq 100 ]; then
             yad --center --title="System Update" \
                 --text="$BASE_TEXT" \
                 --width=400 --height=150 \
                 --on-top \
-                --button="Show Output:100" --button="Hide Output:101" &
+                --button="Show Output:100" &
             MAIN_PID=$!
         fi
     done
