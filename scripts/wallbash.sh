@@ -45,3 +45,8 @@ chmod +x "$SCRIPTS/ZenBash.sh" || { echo "Error: Failed to grant permissions to 
 cd - || exit 1
 rm -rf /tmp/zenWallbash
 echo "Successfully installed Zen-Browser wallbash theme"
+
+echo "Setting up spicetify"
+sudo chmod a+wr /opt/spotify
+sudo chmod a+wr /opt/spotify/Apps -R
+yay -S spicetify-cli
