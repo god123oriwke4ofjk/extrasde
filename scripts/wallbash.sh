@@ -47,6 +47,4 @@ rm -rf /tmp/zenWallbash
 echo "Successfully installed Zen-Browser wallbash theme"
 
 echo "Setting up spicetify"
-sudo chmod a+wr /opt/spotify
-sudo chmod a+wr /opt/spotify/Apps -R
-yay -S spicetify-cli
+$SCRIPTS/spotify.sh
