@@ -1,9 +1,10 @@
 [Unit]
-Description=Monitor Vesktop configuration for updates to restore quickCss.css
+Description=Run VPNBook Scraper every two weeks
 
-[Path]
-PathChanged=/home/%u/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css
-Unit=restore-vesktop-css.service
+[Timer]
+OnUnitActiveSec=1209600
+Unit=vpnbook-scraper.service
+Persistent=true
 
 [Install]
-WantedBy=default.target
+WantedBy=timers.target
