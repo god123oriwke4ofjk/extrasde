@@ -14,6 +14,7 @@ ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
 EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
+DCOL_FILE="/home/$USER/.config/hyde/wallbash/always/discord.dcol"
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
@@ -165,6 +166,45 @@ if [ -f "$VESKTOP_CONFIG_FILE" ]; then
 else
     echo "Warning: $VESKTOP_CONFIG_FILE not found. Hardware acceleration not modified."
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
+fi
+
+CUSTOM_CSS=$(cat << 'EOF'
+
+/* Custom font for Vesktop */
+::placeholder, body, button, input, select, textarea {
+    font-family: 'Alef', sans-serif;
+    text-rendering: optimizeLegibility;
+}
+EOF
+)
+
+if [[ ! -f "$DCOL_FILE" ]]; then
+    echo "Error: $DCOL_FILE does not exist."
+    echo "LOGGED_ERROR: $DCOL_FILE not found" >> "$LOG_FILE"
+    exit 1
+fi
+
+if ! ls "$BACKUP_DIR/discord.dcol".* >/dev/null 2>&1; then
+    cp "$DCOL_FILE" "$BACKUP_DIR/discord.dcol.$(date +%s)" || { echo "Error: Failed to backup $DCOL_FILE"; exit 1; }
+    echo "BACKUP_CONFIG: $DCOL_FILE -> $BACKUP_DIR/discord.dcol.$(date +%s)" >> "$LOG_FILE"
+    echo "Created backup of $DCOL_FILE"
+else
+    echo "Skipping: Backup of $DCOL_FILE already exists"
+fi
+
+if grep -Fx "$CUSTOM_CSS" "$DCOL_FILE" >/dev/null; then
+    echo "Skipping: Custom CSS already exists in $DCOL_FILE"
+    echo "SKIPPED_MODIFICATION: $DCOL_FILE -> Custom CSS already present" >> "$LOG_FILE"
+else
+    if grep -Fx "/* Any custom CSS below here */" "$DCOL_FILE" >/dev/null; then
+        sed -i "/\/* Any custom CSS below here *\/$/a\\$CUSTOM_CSS" "$DCOL_FILE" || { echo "Error: Failed to add custom CSS to $DCOL_FILE"; exit 1; }
+        echo "Added custom CSS to $DCOL_FILE after marker comment"
+        echo "MODIFIED_CONFIG: $DCOL_FILE -> Added custom CSS" >> "$LOG_FILE"
+    else
+        echo "$CUSTOM_CSS" >> "$DCOL_FILE" || { echo "Error: Failed to append custom CSS to $DCOL_FILE"; exit 1; }
+        echo "Appended custom CSS to $DCOL_FILE (marker comment not found)"
+        echo "MODIFIED_CONFIG: $DCOL_FILE -> Appended custom CSS (no marker)" >> "$LOG_FILE"
+    fi
 fi
 
 echo "Installation and modification complete!"
