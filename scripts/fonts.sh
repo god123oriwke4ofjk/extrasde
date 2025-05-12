@@ -13,11 +13,7 @@ VESKTOP_SOURCE_DIR="/home/$USER/.local/share/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
 EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
-EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
-VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
-VESKTOP_VENCORD_SETTINGS="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
-FONT_NAME="Alef"  # Change this to your desired Hebrew font
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
@@ -170,99 +166,6 @@ else
     echo "Warning: $VESKTOP_CONFIG_FILE not found. Hardware acceleration not modified."
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
-
-if ! fc-list :lang=he | grep -qi "$FONT_NAME"; then
-    yay -Syu --noconfirm ttf-alef || { echo "Error: Failed to install ttf-alef font"; exit 1; }
-    fc-cache -f -v || { echo "Error: Failed to update font cache"; exit 1; }
-    echo "INSTALLED_FONT: $FONT_NAME" >> "$LOG_FILE"
-    echo "Installed $FONT_NAME font and updated font cache"
-else
-    echo "Skipping: $FONT_NAME font already installed"
-fi
-
-FONT_CSS="
-* Custom font for Vesktop *
-::placeholder, body, button, input, select, textarea {
-    font-family: '$FONT_NAME', sans-serif;
-    text-rendering: optimizeLegibility;
-}
-"
-
-if [ -f "$VESKTOP_CSS_FILE" ]; then
-    if ! grep -q "font-family: '$FONT_NAME'" "$VESKTOP_CSS_FILE"; then
-        cp "$VESKTOP_CSS_FILE" "$BACKUP_DIR/quickCss.css.$(date +%s)" || { echo "Error: Failed to backup $VESKTOP_CSS_FILE"; exit 1; }
-        echo "BACKUP_CSS: $VESKTOP_CSS_FILE -> $BACKUP_DIR/quickCss.css.$(date +%s)" >> "$LOG_FILE"
-        echo "Created backup of $VESKTOP_CSS_FILE"
-        echo "$FONT_CSS" >> "$VESKTOP_CSS_FILE" || { echo "Error: Failed to append font CSS to $VESKTOP_CSS_FILE"; exit 1; }
-        echo "MODIFIED_CSS: $VESKTOP_CSS_FILE -> Added custom font CSS for $FONT_NAME" >> "$LOG_FILE"
-        echo "Added custom font CSS to $VESKTOP_CSS_FILE"
-    else
-        echo "Skipping: Custom font CSS for $FONT_NAME already present in $VESKTOP_CSS_FILE"
-    fi
-else
-    mkdir -p "$(dirname "$VESKTOP_CSS_FILE")" || { echo "Error: Failed to create directory for $VESKTOP_CSS_FILE"; exit 1; }
-    echo "$FONT_CSS" > "$VESKTOP_CSS_FILE" || { echo "Error: Failed to create $VESKTOP_CSS_FILE with font CSS"; exit 1; }
-    echo "CREATED_CSS: $VESKTOP_CSS_FILE -> Added custom font CSS for $FONT_NAME" >> "$LOG_FILE"
-    echo "Created $VESKTOP_CSS_FILE with custom font CSS"
-fi
-
-SYSTEMD_USER_DIR="/home/$USER/.config/systemd/user"
-RESTORE_CSS_SCRIPT="/home/$USER/.local/bin/restore-vesktop-css.sh"
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-RESTORE_CSS_SOURCE="$SCRIPT_DIR/../config/restore-css.sh"
-SYSTEMD_SERVICE_SOURCE="$SCRIPT_DIR/../config/systemd/restore-vesktop-css.service"
-SYSTEMD_PATH_SOURCE="$SCRIPT_DIR/../config/systemd/restore-vesktop-css.path"
-
-[ ! -f "$RESTORE_CSS_SOURCE" ] && { echo "Error: $RESTORE_CSS_SOURCE not found"; exit 1; }
-
-[ ! -f "$SYSTEMD_SERVICE_SOURCE" ] && { echo "Error: $SYSTEMD_SERVICE_SOURCE not found"; exit 1; }
-[ ! -f "$SYSTEMD_PATH_SOURCE" ] && { echo "Error: $SYSTEMD_PATH_SOURCE not found"; exit 1; }
-
-if grep -q "PathChanged=.*\$VESKTOP_CSS_FILE" "$SYSTEMD_PATH_SOURCE"; then
-    echo "Warning: $SYSTEMD_PATH_SOURCE contains variable \$VESKTOP_CSS_FILE. Replacing with absolute path."
-    sed -i "s|PathChanged=.*\$VESKTOP_CSS_FILE|PathChanged=/home/%u/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css|" "$SYSTEMD_PATH_SOURCE" || { echo "Error: Failed to fix PathChanged in $SYSTEMD_PATH_SOURCE"; exit 1; }
-    echo "Fixed PathChanged in $SYSTEMD_PATH_SOURCE to use absolute path"
-    echo "FIXED_SYSTEMD_PATH: $SYSTEMD_PATH_SOURCE -> Replaced \$VESKTOP_CSS_FILE with absolute path" >> "$LOG_FILE"
-fi
-
-if ! grep -q "PathChanged=/home/%u" "$SYSTEMD_PATH_SOURCE"; then
-    echo "Error: $SYSTEMD_PATH_SOURCE does not contain an absolute PathChanged path"
-    exit 1
-fi
-
-mkdir -p "$(dirname "$RESTORE_CSS_SCRIPT")" || { echo "Error: Failed to create directory for $RESTORE_CSS_SCRIPT"; exit 1; }
-
-if [ -f "$RESTORE_CSS_SCRIPT" ]; then
-    cp "$RESTORE_CSS_SCRIPT" "$BACKUP_DIR/restore-vesktop-css.sh.$(date +%s)" || { echo "Error: Failed to backup $RESTORE_CSS_SCRIPT"; exit 1; }
-    echo "BACKUP_SCRIPT: $RESTORE_CSS_SCRIPT -> $BACKUP_DIR/restore-vesktop-css.sh.$(date +%s)" >> "$LOG_FILE"
-    echo "Created backup of $RESTORE_CSS_SCRIPT"
-fi
-
-cp "$RESTORE_CSS_SOURCE" "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to copy $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"; exit 1; }
-chmod +x "$RESTORE_CSS_SCRIPT" || { echo "Error: Failed to make $RESTORE_CSS_SCRIPT executable"; exit 1; }
-echo "CREATED_SCRIPT: $RESTORE_CSS_SOURCE -> $RESTORE_CSS_SCRIPT" >> "$LOG_FILE"
-echo "Copied $RESTORE_CSS_SOURCE to $RESTORE_CSS_SCRIPT"
-
-mkdir -p "$SYSTEMD_USER_DIR" || { echo "Error: Failed to create $SYSTEMD_USER_DIR"; exit 1; }
-
-for unit in restore-vesktop-css.service restore-vesktop-css.path; do
-    if [ -f "$SYSTEMD_USER_DIR/$unit" ]; then
-        cp "$SYSTEMD_USER_DIR/$unit" "$BACKUP_DIR/$unit.$(date +%s)" || { echo "Error: Failed to backup $SYSTEMD_USER_DIR/$unit"; exit 1; }
-        echo "BACKUP_SYSTEMD: $SYSTEMD_USER_DIR/$unit -> $BACKUP_DIR/$unit.$(date +%s)" >> "$LOG_FILE"
-        echo "Created backup of $SYSTEMD_USER_DIR/$unit"
-    fi
-done
-
-cp "$SYSTEMD_SERVICE_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.service" || { echo "Error: Failed to copy $SYSTEMD_SERVICE_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.service"; exit 1; }
-cp "$SYSTEMD_PATH_SOURCE" "$SYSTEMD_USER_DIR/restore-vesktop-css.path" || { echo "Error: Failed to copy $SYSTEMD_PATH_SOURCE to $SYSTEMD_USER_DIR/restore-vesktop-css.path"; exit 1; }
-echo "COPIED_SYSTEMD: $SYSTEMD_SERVICE_SOURCE -> $SYSTEMD_USER_DIR/restore-vesktop-css.service" >> "$LOG_FILE"
-echo "COPIED_SYSTEMD: $SYSTEMD_PATH_SOURCE -> $SYSTEMD_USER_DIR/restore-vesktop-css.path" >> "$LOG_FILE"
-echo "Copied systemd service and path files to $SYSTEMD_USER_DIR"
-
-systemctl --user enable restore-vesktop-css.path || { echo "Error: Failed to enable restore-vesktop-css.path"; exit 1; }
-systemctl --user start restore-vesktop-css.path || { echo "Error: Failed to start restore-vesktop-css.path"; exit 1; }
-echo "ENABLED_SYSTEMD: restore-vesktop-css.path" >> "$LOG_FILE"
-echo "Enabled and started restore-vesktop-css.path"
 
 echo "Installation and modification complete!"
 exit 0
