@@ -1,11 +1,13 @@
 [Unit]
-Description=Restore Vesktop quickCss.css after updates
+Description=VPNBook Scraper Service
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/%u/.local/bin/restore-vesktop-css.sh
-RemainAfterExit=yes
+ExecStart=/bin/bash /home/$USER/setup_and_scrape.sh
+WorkingDirectory=/home/$USER
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=default.target
