@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 ALWAYS="$HOME/.config/hyde/wallbash/always"
 SCRIPTS="$HOME/.config/hyde/wallbash/scripts"
 
@@ -47,4 +49,47 @@ rm -rf /tmp/zenWallbash
 echo "Successfully installed Zen-Browser wallbash theme"
 
 echo "Setting up spicetify"
-$SCRIPTS/spotify.sh
+sudo chmod a+wr /opt/spotify
+sudo chmod a+wr /opt/spotify/Apps -R
+yay -S spicetify-cli
+mkdir -p "$(dirname $HOME/.config/spicetify/Themes/text/user.css)"
+curl -sSL "https://raw.githubusercontent.com/spicetify/spicetify-themes/refs/heads/master/text/user.css" -o $HOME/.config/spicetify/Themes/text/user.css || {
+    echo "Error downloading user.css"
+    exit 1
+}
+git clone --depth 1 https://github.com/dim-ghub/Wallbash-TUIs.git /tmp/spotifyWallbash || {
+    echo "Error cloning repository"
+    exit 1
+}
+cd /tmp/spotifyWallbash/.config/hyde/wallbash || { echo "Error: chanding directory to /tmp/spotifyWallbash"; exit 1; }
+if [ -f /scripts/spotify.sh ]; then
+    cp /scripts/spotify.sh "$HOME/.config/spicetify/Themes/text/user.css" || {
+        echo "Error copying spotify.sh"
+        exit 1
+    }
+    chmod +x $SCRIPTS/spotify.sh || {
+        echo "Error setting permissions on spotify.sh"
+        exit 1
+    }
+else
+    echo "spotify.sh not found in repository"
+    exit 1
+fi 
+if ! $SCRIPTS/spotify.sh; then
+    echo "Error running spotify.sh"
+    exit 1
+fi
+spicetify config current_theme text || {
+    echo "Error setting spicetify theme"
+    exit 1
+}
+spicetify config color_scheme Wallbash || {
+    echo "Error setting spicetify color scheme"
+    exit 1
+}
+spicetify restore backup apply || {
+    echo "Error applying spicetify backup"
+    exit 1
+}
+cd - || exit 1
+rm -rf /tmp/spotifyWallbash
