@@ -49,7 +49,7 @@ install_nvidia() {
 
     pacman -Syu --noconfirm
 
-    pacman -S --noconfirm nvidia nvidia-utils
+    pacman -S --noconfirm nvidia nvidia-utils libva-nvidia-driver
 
     echo "Blacklisting Nouveau driver..."
     cat > /etc/modprobe.d/blacklist-nouveau.conf << EOL
@@ -72,14 +72,57 @@ manage_dkms() {
     fi
 }
 
+configure_hyprland() {
+    echo "Configuring Hyprland for NVIDIA..."
+
+    local config_file="/home/$SUDO_USER/.config/hypr/hyprland.conf"
+    local line_to_add="env = ELECTRON_OZONE_PLATFORM_HINT,auto"
+
+    if ! pacman -Qs hyprland > /dev/null; then
+        echo "Hyprland is not installed. Skipping Hyprland configuration."
+        return 0
+    fi
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "Creating $config_file..."
+        mkdir -p "$(dirname "$config_file")"
+        touch "$config_file"
+        chown "$SUDO_USER:$SUDO_USER" "$config_file"
+    fi
+
+    if grep -Fx "$line_to_add" "$config_file" > /dev/null; then
+        echo "Line '$line_to_add' already exists in $config_file. No changes made."
+    else
+        echo "$line_to_add" >> "$config_file"
+        if [[ $? -eq 0 ]]; then
+            echo "Successfully added '$line_to_add' to $config_file."
+        else
+            echo "Error: Failed to append line to $config_file."
+            exit 1
+        fi
+    fi
+
+    if grep -Fx "$line_to_add" "$config_file" > /dev/null; then
+        echo "Verification: Line '$line_to_add' is now present in $config_file."
+    else
+        echo "Error: Verification failed. Line '$line_to_add' was not added."
+        exit 1
+    fi
+
+    chown "$SUDO_USER:$SUDO_USER" "$config_file"
+    echo "Hyprland configuration completed."
+}
+
 echo "Starting NVIDIA driver check and installation script..."
 
 manage_dkms
 
 if check_driver; then
     install_nvidia
+    configure_hyprland
 else
-    echo "NVIDIA driver is already installed. No further action required."
+    echo "NVIDIA driver is already installed. Checking Hyprland configuration..."
+    configure_hyprland
 fi
 
 echo "Script completed. Please reboot your system to apply changes if the NVIDIA driver was installed."
