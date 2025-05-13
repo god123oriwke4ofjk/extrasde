@@ -73,55 +73,29 @@ else
     exit 1
 fi
 
-# Step 13: Set up systemd timer to run every two weeks
-echo "Setting up systemd timer to run every two weeks..."
+# Step 13: Copy the script to a persistent location and ensure systemd timer is enabled
+echo "Ensuring systemd timer is set up..."
 script_path="$HOME/setup_and_scrape.sh"
 service_dir="$HOME/.config/systemd/user"
-service_file="$service_dir/vpnbook-scraper.service"
-timer_file="$service_dir/vpnbook-scraper.timer"
+systemd_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/systemd"
+service_file="$systemd_dir/vpnbook-scraper.service"
+timer_file="$systemd_dir/vpnbook-scraper.timer"
 
-# Determine the script's path using BASH_SOURCE[0] and copy it
+# Copy the script to a persistent location
 current_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 if [ "$current_script" != "$script_path" ]; then
     cp "$current_script" "$script_path"
     chmod +x "$script_path"
 fi
 
-# Create systemd user service
+# Copy systemd files to user systemd directory
 mkdir -p "$service_dir"
-cat > "$service_file" << EOF
-[Unit]
-Description=VPNBook Scraper Service
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash $script_path
-WorkingDirectory=$HOME
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=default.target
-EOF
-
-# Create systemd user timer
-cat > "$timer_file" << EOF
-[Unit]
-Description=Run VPNBook Scraper every two weeks
-
-[Timer]
-OnUnitActiveSec=1209600
-Unit=vpnbook-scraper.service
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
+cp "$service_file" "$service_dir/"
+cp "$timer_file" "$service_dir/"
 
 # Enable and start the timer
 systemctl --user daemon-reload
 systemctl --user enable vpnbook-scraper.timer
 systemctl --user start vpnbook-scraper.timer
 
-echo "Systemd timer set up to run every two weeks. Check status with: systemctl --user status vpnbook-scraper.timer"
+echo "Systemd timer enabled and started. Check status with: systemctl --user status vpnbook-scraper.timer"
