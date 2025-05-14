@@ -25,6 +25,17 @@ VESKTOP_PLUGINS_TO_ENABLE=(
     "SpotifyCrack"
 )
 
+# Parse arguments
+INSTALL_OSU=false
+INSTALL_LTS=false
+for arg in "$@"; do
+    case "$arg" in
+        osu) INSTALL_OSU=true ;;
+        lts) INSTALL_LTS=true ;;
+        *) echo "Warning: Unknown argument '$arg' ignored" ;;
+    esac
+done
+
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
@@ -52,7 +63,14 @@ else
 fi
 
 echo "Installing pacman packages"
-for pkg in xclip ydotool wget unzip linux-lts linux-lts-headers wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad; do
+# Base packages
+PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad"
+# Conditionally add LTS kernel packages
+if $INSTALL_LTS; then
+    PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
+fi
+
+for pkg in $PACMAN_PACKAGES; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
         sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
@@ -73,18 +91,22 @@ for pkg in brave-bin netflix qemu-full; do
     fi
 done
 
-if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
-    echo "Installing osu"
-    git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1;}
-    cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
-    chmod +x ./osu_winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
-    echo "1" | ./osu_winello.sh
-    cd - || exit 1
-    rm -rf /tmp/osu
-    echo "INSTALLED_PACKAGE: osu" >> "$LOG_FILE"
-    echo "Installed osu"
+if $INSTALL_OSU; then
+    if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
+        echo "Installing osu"
+        git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1;}
+        cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
+        chmod +x ./osu_winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
+        echo "1" | ./osu_winello.sh
+        cd - || exit 1
+        rm -rf /tmp/osu
+        echo "INSTALLED_PACKAGE: osu" >> "$LOG_FILE"
+        echo "Installed osu"
+    else
+        echo "Skipped: osu-wine is already installed"
+    fi
 else
-    echo "Skipped: osu-wine is already installed"
+    echo "Skipping: osu installation (osu parameter not provided)"
 fi
 
 [ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
@@ -158,7 +180,7 @@ else
     grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
 fi
 
-#STEAM
+# STEAM
 echo "Setting up steam"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "Enabling multilib repository..."
@@ -183,7 +205,7 @@ fi
 
 if compgen -G "$STEAM_CONFIG" > /dev/null; then
     for config in $STEAM_CONFIG; do
-        if [[ -f "$STEAM_CONFIG" ]]; then
+        if [[ -f "$config" ]]; then
             echo "Found Steam config at $config. Enabling Steam Play..."
             cp "$config" "$config.bak"
             sed -i '/"SteamPlay"/,/}/ s/"EnableForAll"\s*"\w*"/"EnableForAll" "1"/' "$config"
@@ -207,7 +229,7 @@ EOF
     echo "Default Steam Play configuration created. Will apply after first login."
 fi
 
-echo "Finished setting up steam" 
+echo "Finished setting up steam"
 
 if ! command -v flatpak >/dev/null 2>&1; then
     sudo pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
@@ -225,9 +247,9 @@ else
     echo "Skipping: flathub repository already added"
 fi
 
-for pkg in com.dec05eba.gpu_screen_recorder  dev.vencord.Vesktop  org.vinegarhq.Sober; do
+for pkg in com.dec05eba.gpu_screen_recorder dev.vencord.Vesktop org.vinegarhq.Sober; do
     if ! flatpak list | grep -q "$pkg"; then
-        if [ $pkg = "com.dec05eba.gpu_screen_recorder" ]; then
+        if [ "$pkg" = "com.dec05eba.gpu_screen_recorder" ]; then
             flatpak install --system -y com.dec05eba.gpu_screen_recorder || { echo "Error: Failed to install GPU SCREEN RECORDER"; exit 1; }
         else
             flatpak install --user -y flathub "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
@@ -241,12 +263,12 @@ done
 
 if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     sudo ydotool &
-    echo "Generating gpu-screen-recorder config files" 
+    echo "Generating gpu-screen-recorder config files"
     flatpak run com.dec05eba.gpu_screen_recorder &
     sleep 1
     window=$(hyprctl clients -j | jq -r '.[] | select(.class=="gpu-screen-recorder") | .address')
     if [[ -n "$window" ]]; then
-        hyprctl dispatch focuswindow address:$window
+        hyprctl dispatch focuswindow-eth address:$window
         echo "Focused gpu-screen-recorder window"
         sleep 1
         sudo ydotool mousemove 500 400 click 1
@@ -324,5 +346,5 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     fi
 fi
 
-echo "SCript Finished"
+echo "Script Finished"
 exit 0
