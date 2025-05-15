@@ -21,10 +21,15 @@ SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 
 # Parse parameters
 BROWSER_ONLY=false
+KEYBIND_ONLY=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
         --browser)
             BROWSER_ONLY=true
+            shift
+            ;;
+        --keybind)
+            KEYBIND_ONLY=true
             shift
             ;;
         *)
@@ -34,17 +39,259 @@ while [[ "$1" =~ ^- ]]; do
     esac
 done
 
-# Create necessary directories (always needed for browser setup)
+# Create necessary directories (always needed for browser or keybind setup)
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 # Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY)" >> "$LOG_FILE"
 
-# Non-browser setup (skipped if --browser is used)
-if [ "$BROWSER_ONLY" = false ]; then
+# Keybind setup (executed if --keybind is used or no parameters)
+if [ "$KEYBIND_ONLY" = true ] || [ "$BROWSER_ONLY" = false ]; then
+    # Configure keybindings
+    if [ ! -f "$KEYBINDINGS_CONF" ]; then
+        echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
+        touch "$KEYBINDINGS_CONF" || { echo "Error: Failed to create $KEYBINDINGS_CONF"; exit 1; }
+    fi
+
+    [ ! -w "$KEYBINDINGS_CONF" ] && { echo "Error: $KEYBINDINGS_CONF is not writable."; exit 1; }
+
+    # Backup keybindings.conf, removing any previous backups
+    if [ -f "$KEYBINDINGS_CONF" ]; then
+        # Remove any existing keybindings.conf.bak in BACKUP_DIR
+        find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete || { echo "Warning: Failed to delete previous keybindings.conf.bak"; }
+        # Create new backup
+        cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak" || { echo "Error: Failed to backup $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"; exit 1; }
+        echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
+        echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
+    fi
+
+    # Define keybinding lines
+    VPN_LINES="\
+\$d=[\$ut|Vpn Commands]
+bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
+bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
+    SCREEN_RECORDER_LINE="bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder"
+
+    # Check if all keybindings already exist
+    if grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null && \
+         grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        echo "Skipping: VPN, and screen recorder bindings already exist in $KEYBINDINGS_CONF"
+    else
+        UTILITIES_START='$d=[$ut]'
+        SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
+        temp_file=$(mktemp)
+
+        # Update or add VPN bindings
+        if ! grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
+            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
+                echo "Appending Utilities section to $KEYBINDINGS_CONF"
+                echo -e "\n$UTILITIES_START\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+                echo "DEBUG: Appended Utilities section with VPN bindings" >> "$LOG_FILE"
+                echo "MODIFIED_KEYBINDINGS: Added and VPN bindings" >> "$LOG_FILE"
+            else
+                awk -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
+                    BEGIN { found_util=0; added=0 }
+                    $0 ~ util_start { found_util=1; print; next }
+                    found_util && !added { print; if (!index($0, vpn_lines)) { print vpn_lines } added=1; next }
+                    found_util && $0 ~ sc_start && !added { print vpn_lines "\n"; added=1; print; next }
+                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
+                    found_util && /^$/ && !added { print vpn_lines "\n"; added=1; next }
+                    { print }
+                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
+                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+                echo "Added/updated VPN bindings to $KEYBINDINGS_CONF"
+                echo "DEBUG: Updated Utilities section with VPN bindings" >> "$LOG_FILE"
+                echo "MODIFIED_KEYBINDINGS: Added/updated VPN bindings" >> "$LOG_FILE"
+            fi
+        fi
+
+        # Update or add screen recorder binding in Screen Capture section
+        if ! grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
+                echo "Appending Utilities section with Screen Capture to $KEYBINDINGS_CONF"
+                echo -e "\n$UTILITIES_START\n$SCREEN_CAPTURE_START\n$SCREEN_RECORDER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+                echo "Added Utilities section with Screen Capture and screen recorder binding to $KEYBINDINGS_CONF"
+                echo "DEBUG: Appended Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
+                echo "MODIFIED_KEYBINDINGS: Added Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
+            elif ! grep -q "$SCREEN_CAPTURE_START" "$KEYBINDINGS_CONF"; then
+                awk -v sc_start="$SCREEN_CAPTURE_START" -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v util_start="$UTILITIES_START" '
+                    BEGIN { found_util=0 }
+                    $0 ~ util_start { found_util=1; print; next }
+                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; print; next }
+                    found_util && /^$/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; next }
+                    { print }
+                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
+                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+                echo "Added Screen Capture section with screen recorder binding to $KEYBINDINGS_CONF"
+                echo "DEBUG: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
+                echo "MODIFIED_KEYBINDINGS: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
+            else
+                awk -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v sc_start="$SCREEN_CAPTURE_START" '
+                    BEGIN { found_sc=0 }
+                    $0 ~ sc_start { found_sc=1; print; next }
+                    found_sc && /binddl = , Print, \$d print all monitors/ { print; print screen_recorder_line; found_sc=0; next }
+                    found_sc && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print screen_recorder_line "\n"; found_sc=0; print; next }
+                    found_sc && /^$/ { print screen_recorder_line "\n"; found_sc=0; next }
+                    { print }
+                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
+                if ! mv "$temp_file" "$KEYBINDINGS_CONF"; then
+                    echo "Error: Failed to update $KEYBINDINGS_CONF"
+                    rm -f "$temp_file"
+                    exit 1
+                fi
+                echo "Added screen recorder binding to existing Screen Capture section in $KEYBINDINGS_CONF"
+                echo "DEBUG: Added screen recorder binding to existing Screen Capture section" >> "$LOG_FILE"
+                echo "MODIFIED_KEYBINDINGS: Added screen recorder binding to Screen Capture section" >> "$LOG_FILE"
+            fi
+        else
+            echo "Skipping: Screen recorder binding already exists in $KEYBINDINGS_CONF"
+        fi
+    fi
+
+    # Install keybind-related scripts (e.g., vpn-toggle.sh)
+    declare -A keybind_scripts
+    keybind_scripts["vpn-toggle.sh"]="$CONFIG_DIR/vpn-toggle.sh"
+    for script_name in "${!keybind_scripts[@]}"; do
+        src_script="${keybind_scripts[$script_name]}"
+        script_path="$SCRIPT_DIR/$script_name"
+        if [ ! -f "$src_script" ]; then
+            echo "Warning: Source script $src_script not found. Skipping."
+            continue
+        fi
+        if [ -f "$script_path" ]; then
+            echo "Warning: $script_path already exists."
+            src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
+            tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
+            if [ "$src_hash" = "$tgt_hash" ]; then
+                echo "$script_path has identical content, checking permissions."
+                [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
+            else
+                echo "$script_path has different content."
+                read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
+                if [[ "$replace_script" =~ ^[Yy]$ ]]; then
+                    current_timestamp=$(date +%s)
+                    cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
+                    cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
+                    chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+                    echo "Replaced and made $script_path executable."
+                    echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+                else
+                    echo "Skipping replacement of $script_path."
+                    [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
+                fi
+            fi
+        else
+            cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
+            chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+            echo "Created and made $script_path executable."
+            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+        fi
+        ls -l "$script_path"
+    done
+fi
+
+# Browser setup (executed if --browser is used or no parameters)
+if [ "$BROWSER_ONLY" = true ] || [ "$KEYBIND_ONLY" = false ]; then
+    # Install dynamic-browser.sh
+    declare -A scripts
+    scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
+    for script_name in "${!scripts[@]}"; do
+        src_script="${scripts[$script_name]}"
+        script_path="$SCRIPT_DIR/$script_name"
+        if [ ! -f "$src_script" ]; then
+            echo "Error: Source script $src_script not found."
+            exit 1
+        fi
+        if [ -f "$script_path" ]; then
+            echo "Warning: $script_path already exists."
+            src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
+            tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
+            if [ "$src_hash" = "$tgt_hash" ]; then
+                echo "$script_path has identical content, checking permissions."
+                [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
+            else
+                echo "$script_path has different content."
+                read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
+                if [[ "$replace_script" =~ ^[Yy]$ ]]; then
+                    current_timestamp=$(date +%s)
+                    cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
+                    cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
+                    chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+                    echo "Replaced and made $script_path executable."
+                    echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+                else
+                    echo "Skipping replacement of $script_path."
+                    [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
+                fi
+            fi
+        else
+            cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
+            chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+            echo "Created and made $script_path executable."
+            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+        fi
+        ls -l "$script_path"
+    done
+
+    # Configure dynamic-browser.sh in userprefs.conf
+    if [ -f "$USERPREFS_CONF" ]; then
+        current_timestamp=$(date +%s)
+        cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
+        echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
+        echo "Backed up $USERPREFS_CONF"
+    fi
+    if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
+        echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
+        echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+        echo "Configured dynamic-browser.sh to run on login"
+    else
+        echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
+    fi
+
+    # Configure Firefox autoscrolling
+    if command -v firefox >/dev/null 2>&1; then
+        if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
+            echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
+            firefox --no-remote -CreateProfile default || { echo "Warning: Failed to create a new Firefox profile. Skipping autoscrolling."; }
+            echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
+        fi
+        if [ -f "$PROFILE_INI" ]; then
+            PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
+            if [ -z "$PROFILE_PATH" ]; then
+                PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$PROFILE_INI" | head -n1)
+            fi
+            if [ -n "$PROFILE_PATH" ]; then
+                FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
+                if [ -f "$FIREFOX_PREFS_FILE" ]; then
+                    if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
+                        echo "Skipping: Firefox autoscrolling is already enabled."
+                    else
+                        pkill -f firefox 2>/dev/null
+                        echo 'user_pref("general.autoScroll", true);' >> "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to modify $FIREFOX_PREFS_FILE"; exit 1; }
+                        current_timestamp=$(date +%s)
+                        cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$current_timestamp" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE"; }
+                        echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
+                        echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+                    fi
+                else
+                    echo "Warning: Firefox prefs.js not found at $FIREFOX_PREFS_FILE. Skipping autoscrolling."
+                fi
+            else
+                echo "Warning: Could not find default profile in profiles.ini. Skipping autoscrolling."
+            fi
+        else
+            echo "Warning: profiles.ini not found at $PROFILE_INI. Skipping autoscrolling."
+        fi
+    else
+        echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
+    fi
+fi
+
+# Non-browser and non-keybind setup (skipped if --browser or --keybind is used)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
     # Prompt for sudo password upfront
     echo "This script requires sudo privileges to install dependencies and configure sudoers."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
@@ -167,99 +414,6 @@ EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
     fi
     [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were moved."
 
-    # Configure keybindings
-    if [ ! -f "$KEYBINDINGS_CONF" ]; then
-        echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
-        touch "$KEYBINDINGS_CONF" || { echo "Error: Failed to create $KEYBINDINGS_CONF"; exit 1; }
-    fi
-
-    [ ! -w "$KEYBINDINGS_CONF" ] && { echo "Error: $KEYBINDINGS_CONF is not writable."; exit 1; }
-
-    # Define keybinding lines
-    VPN_LINES="\
-\$d=[\$ut|Vpn Commands]
-bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
-bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
-    SCREEN_RECORDER_LINE="bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder"
-
-    # Check if all keybindings already exist
-    if grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null && \
-         grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: VPN, and screen recorder bindings already exist in $KEYBINDINGS_CONF"
-    else
-        UTILITIES_START='$d=[$ut]'
-        SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
-        temp_file=$(mktemp)
-        cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.$current_timestamp" || { echo "Error: Failed to backup $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-        echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.$current_timestamp" >> "$LOG_FILE"
-
-        # Update or add VPN bindings
-        if ! grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-                echo "Appending Utilities section to $KEYBINDINGS_CONF"
-                echo -e "\n$UTILITIES_START\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "DEBUG: Appended Utilities section with VPN bindings" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added and VPN bindings" >> "$LOG_FILE"
-            else
-                awk -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
-                    BEGIN { found_util=0; added=0 }
-                    $0 ~ util_start { found_util=1; print; next }
-                    found_util && !added { print; if (!index($0, vpn_lines)) { print vpn_lines } added=1; next }
-                    found_util && $0 ~ sc_start && !added { print vpn_lines "\n"; added=1; print; next }
-                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
-                    found_util && /^$/ && !added { print vpn_lines "\n"; added=1; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added/updated VPN bindings to $KEYBINDINGS_CONF"
-                echo "DEBUG: Updated Utilities section with VPN bindings" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added/updated VPN bindings" >> "$LOG_FILE"
-            fi
-        fi
-
-        # Update or add screen recorder binding in Screen Capture section
-        if ! grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-                echo "Appending Utilities section with Screen Capture to $KEYBINDINGS_CONF"
-                echo -e "\n$UTILITIES_START\n$SCREEN_CAPTURE_START\n$SCREEN_RECORDER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added Utilities section with Screen Capture and screen recorder binding to $KEYBINDINGS_CONF"
-                echo "DEBUG: Appended Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
-            elif ! grep -q "$SCREEN_CAPTURE_START" "$KEYBINDINGS_CONF"; then
-                awk -v sc_start="$SCREEN_CAPTURE_START" -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v util_start="$UTILITIES_START" '
-                    BEGIN { found_util=0 }
-                    $0 ~ util_start { found_util=1; print; next }
-                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; print; next }
-                    found_util && /^$/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added Screen Capture section with screen recorder binding to $KEYBINDINGS_CONF"
-                echo "DEBUG: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
-            else
-                awk -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v sc_start="$SCREEN_CAPTURE_START" '
-                    BEGIN { found_sc=0 }
-                    $0 ~ sc_start { found_sc=1; print; next }
-                    found_sc && /binddl = , Print, \$d print all monitors/ { print; print screen_recorder_line; found_sc=0; next }
-                    found_sc && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print screen_recorder_line "\n"; found_sc=0; print; next }
-                    found_sc && /^$/ { print screen_recorder_line "\n"; found_sc=0; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                if ! mv "$temp_file" "$KEYBINDINGS_CONF"; then
-                    echo "Error: Failed to update $KEYBINDINGS_CONF"
-                    rm -f "$temp_file"
-                    exit 1
-                fi
-                echo "Added screen recorder binding to existing Screen Capture section in $KEYBINDINGS_CONF"
-                echo "DEBUG: Added screen recorder binding to existing Screen Capture section" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added screen recorder binding to Screen Capture section" >> "$LOG_FILE"
-            fi
-        else
-            echo "Skipping: Screen recorder binding already exists in $KEYBINDINGS_CONF"
-        fi
-    fi
-
     # Configure userprefs.conf for kb_layout
     if [ ! -f "$USERPREFS_CONF" ]; then
         echo "Warning: $USERPREFS_CONF does not exist. Creating with input block."
@@ -294,104 +448,11 @@ EOF
     fi
 fi
 
-# Install dynamic-browser.sh (always executed)
-declare -A scripts
-scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
-
-for script_name in "${!scripts[@]}"; do
-    src_script="${scripts[$script_name]}"
-    script_path="$SCRIPT_DIR/$script_name"
-    if [ ! -f "$src_script" ]; then
-        echo "Error: Source script $src_script not found."
-        exit 1
-    fi
-    if [ -f "$script_path" ]; then
-        echo "Warning: $script_path already exists."
-        src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
-        tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-        if [ "$src_hash" = "$tgt_hash" ]; then
-            echo "$script_path has identical content, checking permissions."
-            [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-        else
-            echo "$script_path has different content."
-            read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
-            if [[ "$replace_script" =~ ^[Yy]$ ]]; then
-                current_timestamp=$(date +%s)
-                cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
-                cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-                chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                echo "Replaced and made $script_path executable."
-                echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-            else
-                echo "Skipping replacement of $script_path."
-                [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-            fi
-        fi
-    else
-        cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-        chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-        echo "Created and made $script_path executable."
-        echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-    fi
-    ls -l "$script_path"
-done
-
-# Configure dynamic-browser.sh in userprefs.conf (always executed)
-if [ -f "$USERPREFS_CONF" ]; then
+# Create backup session marker (only if not in keybind-only or browser-only mode)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
     current_timestamp=$(date +%s)
-    cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
-    echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
-    echo "Backed up $USERPREFS_CONF"
+    touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
+    echo "Created backup session marker for run at $current_timestamp"
 fi
-if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
-    echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
-    echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
-    echo "Configured dynamic-browser.sh to run on login"
-else
-    echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
-fi
-
-# Configure Firefox autoscrolling (always executed)
-if command -v firefox >/dev/null 2>&1; then
-    if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
-        echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
-        firefox --no-remote -CreateProfile default || { echo "Warning: Failed to create a new Firefox profile. Skipping autoscrolling."; }
-        echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
-    fi
-    if [ -f "$PROFILE_INI" ]; then
-        PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
-        if [ -z "$PROFILE_PATH" ]; then
-            PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$PROFILE_INI" | head -n1)
-        fi
-        if [ -n "$PROFILE_PATH" ]; then
-            FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
-            if [ -f "$FIREFOX_PREFS_FILE" ]; then
-                if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
-                    echo "Skipping: Firefox autoscrolling is already enabled."
-                else
-                    pkill -f firefox 2>/dev/null
-                    echo 'user_pref("general.autoScroll", true);' >> "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to modify $FIREFOX_PREFS_FILE"; exit 1; }
-                    current_timestamp=$(date +%s)
-                    cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$current_timestamp" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE"; }
-                    echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
-                    echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
-                fi
-            else
-                echo "Warning: Firefox prefs.js not found at $FIREFOX_PREFS_FILE. Skipping autoscrolling."
-            fi
-        else
-            echo "Warning: Could not find default profile in profiles.ini. Skipping autoscrolling."
-        fi
-    else
-        echo "Warning: profiles.ini not found at $PROFILE_INI. Skipping autoscrolling."
-    fi
-else
-    echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
-fi
-
-# Create backup session marker
-current_timestamp=$(date +%s)
-touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
-echo "Created backup session marker for run at $current_timestamp"
 
 echo "Script execution completed successfully."
