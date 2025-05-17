@@ -2,6 +2,34 @@
 
 set -e
 
+usage() {
+    echo "Usage: $0 [-nv] [-h | -help]"
+    echo "Options:"
+    echo "  -nv        Skip Nouveau driver checks and blacklisting"
+    echo "  -h, -help  Display this help message and exit"
+    echo ""
+    echo "This script installs and configures the NVIDIA proprietary driver, blacklists Nouveau (unless -nv is used),"
+    echo "and configures Hyprland for NVIDIA. Must be run as root."
+    exit 0
+}
+
+SKIP_NOUVEAU=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -nv)
+            SKIP_NOUVEAU=true
+            shift
+            ;;
+        -h|-help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root. Use sudo."
     exit 1
@@ -13,15 +41,20 @@ check_driver() {
     if lsmod | grep -q "^nvidia"; then
         echo "NVIDIA driver is currently in use."
         return 1
-    elif lsmod | grep -q "^nouveau"; then
+    elif [[ "$SKIP_NOUVEAU" == false ]] && lsmod | grep -q "^nouveau"; then
         echo "Nouveau driver is currently in use."
         return 0
     else
         echo "No NVIDIA or Nouveau driver detected. Checking hardware..."
 
         if lspci | grep -i nvidia | grep -q "VGA\|3D"; then
-            echo "NVIDIA GPU detected, but no driver is loaded. Assuming Nouveau (default)."
-            return 0
+            if [[ "$SKIP_NOUVEAU" == false ]]; then
+                echo "NVIDIA GPU detected, but no driver is loaded. Assuming Nouveau (default)."
+                return 0
+            else
+                echo "NVIDIA GPU detected, but no driver is loaded. Proceeding with NVIDIA installation."
+                return 0
+            fi
         else
             echo "No NVIDIA GPU detected. Exiting."
             exit 1
@@ -51,11 +84,15 @@ install_nvidia() {
 
     pacman -S --noconfirm nvidia nvidia-utils libva-nvidia-driver
 
-    echo "Blacklisting Nouveau driver..."
-    cat > /etc/modprobe.d/blacklist-nouveau.conf << EOL
+    if [[ "$SKIP_NOUVEAU" == false ]]; then
+        echo "Blacklisting Nouveau driver..."
+        cat > /etc/modprobe.d/blacklist-nouveau.conf << EOL
 blacklist nouveau
 options nouveau modeset=0
 EOL
+    else
+        echo "Skipping Nouveau blacklisting due to -nv option."
+    fi
 
     enable_nvidia_drm
 
