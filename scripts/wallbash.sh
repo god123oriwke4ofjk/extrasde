@@ -9,11 +9,11 @@ SPICETIFY_CSS_URL="https://raw.githubusercontent.com/spicetify/spicetify-themes/
 SWAYNC_CONFIG_DIR="$HOME/.config/swaync"
 CONFIG_TOML="$HOME/.config/hyde/config.toml"
 
-APPS=("netflix" "steam" "obs" "zen" "spotify" "swaync")
+APPS=("netflix" "steam" "obs" "zen" "spotify" "swaync" "anki")
 
 usage() {
-    echo "Usage: $0 [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync] [...]"
-    echo "       $0 -remove [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync]"
+    echo "Usage: $0 [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync | -anki] [...]"
+    echo "       $0 -remove [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync | -anki]"
     echo "At least one parameter is required. Use -all to install for all applications."
     echo "Stack parameters to install for multiple apps (e.g., -netflix -steam)."
     echo "For removal, use -remove with -all or an app (e.g., -remove -netflix)."
@@ -25,7 +25,7 @@ command_exists() {
 }
 
 cleanup() {
-    rm -rf /tmp/netflixWallbash /tmp/steamWallbash /tmp/obsWallbash /tmp/zenWallbash /tmp/spotifyWallbash /tmp/SwayNC-Wallbash
+    rm -rf /tmp/netflixWallbash /tmp/steamWallbash /tmp/obsWallbash /tmp/zenWallbash /tmp/spotifyWallbash /tmp/SwayNC-Wallbash /tmp/ankiWallbash
 }
 trap cleanup EXIT
 
@@ -33,10 +33,11 @@ install_netflix() {
     echo "Checking for Netflix..."
     if command_exists yay && yay -Qs netflix >/dev/null 2>&1; then
         echo "Installing Netflix wallbash"
-        NETFLIX_REPO="https://github.com/<correct-user>/netflix-wallbash"
+        NETFLIX_REPO="https://github.com/god123oriwke4ofjk/anki-wallbash"
         git clone "$NETFLIX_REPO" /tmp/netflixWallbash || { echo "Error: Failed to clone Netflix wallbash repository"; exit 1; }
         cd /tmp/netflixWallbash || { echo "Error: Failed to change to /tmp/netflixWallbash"; exit 1; }
         if [ -f setup.sh ]; then
+            chmod +x setup.sh || { echo "Error: Failed to make setup.sh executable"; exit 1; }
             ./setup.sh || { echo "Error: Failed to run setup.sh for Netflix wallbash"; exit 1; }
         else
             echo "Error: setup.sh not found in Netflix wallbash repository"
@@ -51,6 +52,15 @@ install_netflix() {
 
 remove_netflix() {
     echo "Removing Netflix wallbash..."
+    if [ -d /tmp/netflixWallbash ]; then
+        cd /tmp/netflixWallbash || { echo "Error: Failed to change to /tmp/netflixWallbash"; exit 1; }
+        if [ -f setup.sh ]; then
+            chmod +x setup.sh || { echo "Error: Failed to make setup.sh executable"; exit 1; }
+            ./setup.sh -remove || { echo "Error: Failed to run setup.sh -remove"; exit 1; }
+            echo "Ran setup.sh -remove"
+        fi
+        cd - >/dev/null || { echo "Error: Failed to return to previous directory"; exit 1; }
+    fi
     if [ -f "$ALWAYS/netflix.dcol" ]; then
         rm -f "$ALWAYS/netflix.dcol" || { echo "Error: Failed to remove netflix.dcol"; exit 1; }
         echo "Removed $ALWAYS/netflix.dcol"
@@ -59,11 +69,51 @@ remove_netflix() {
         rm -f "$SCRIPTS/netflix.sh" || { echo "Error: Failed to remove netflix.sh"; exit 1; }
         echo "Removed $SCRIPTS/netflix.sh"
     fi
-    if [ -f /opt/Netflix/main.js.bak ]; then
-        sudo mv /opt/Netflix/main.js.bak /opt/Netflix/main.js || { echo "Error: Failed to restore main.js"; exit 1; }
-        echo "Restored /opt/Netflix/main.js from backup"
-    fi
     echo "Netflix wallbash removed"
+}
+
+install_anki() {
+    echo "Checking for Anki..."
+    if pacman -Qs anki >/dev/null 2>&1 || (command_exists yay && yay -Qs anki >/dev/null 2>&1) || flatpak list | grep -q net.ankiweb.Anki; then
+        echo "Installing Anki wallbash"
+        ANKI_REPO="https://github.com/god123oriwke4ofjk/anki-wallbash"
+        git clone "$ANKI_REPO" /tmp/ankiWallbash || { echo "Error: Failed to clone Anki wallbash repository"; exit 1; }
+        cd /tmp/ankiWallbash || { echo "Error: Failed to change to /tmp/ankiWallbash"; exit 1; }
+        if [ -f setup_anki_wallbash.sh ]; then
+            chmod +x setup_anki_wallbash.sh || { echo "Error: Failed to make setup_anki_wallbash.sh executable"; exit 1; }
+            ./setup_anki_wallbash.sh || { echo "Error: Failed to run setup_anki_wallbash.sh for Anki wallbash"; exit 1; }
+        else
+            echo "Error: setup_anki_wallbash.sh not found in Anki wallbash repository"
+            exit 1
+        fi
+        cd_CONV_1 = true
+        cd - >/dev/null || { echo "Error: Failed to return to previous directory"; exit 1; }
+        echo "Successfully installed Anki wallbash theme"
+    else
+        echo "Anki not found (not installed via pacman, AUR, or Flatpak). Skipping Anki wallbash setup."
+    fi
+}
+
+remove_anki() {
+    echo "Removing Anki wallbash..."
+    if [ -d /tmp/ankiWallbash ]; then
+        cd /tmp/ankiWallbash || { echo "Error: Failed to change to /tmp/ankiWallbash"; exit 1; }
+        if [ -f setup_anki_wallbash.sh ]; then
+            chmod +x setup_anki_wallbash.sh || { echo "Error: Failed to make setup_anki_wallbash.sh executable"; exit 1; }
+            ./setup_anki_wallbash.sh -remove || { echo "Error: Failed to run setup_anki_wallbash.sh -remove"; exit 1; }
+            echo "Ran setup_anki_wallbash.sh -remove"
+        fi
+        cd - >/dev/null || { echo "Error: Failed to return to previous directory"; exit 1; }
+    fi
+    if [ -f "$ALWAYS/anki.dcol" ]; then
+        rm -f "$ALWAYS/anki.dcol" || { echo "Error: Failed to remove anki.dcol"; exit 1; }
+        echo "Removed $ALWAYS/anki.dcol"
+    fi
+    if [ -f "$SCRIPTS/anki.sh" ]; then
+        rm -f "$SCRIPTS/anki.sh" || { echo "Error: Failed to remove anki.sh"; exit 1; }
+        echo "Removed $SCRIPTS/anki.sh"
+    fi
+    echo "Anki wallbash removed"
 }
 
 install_steam() {
@@ -378,7 +428,7 @@ while [ $# -gt 0 ]; do
                 shift
             fi
             ;;
-        -netflix|-steam|-obs|-zen|-spotify|-swaync)
+        -netflix|-steam|-obs|-zen|-spotify|-swaync|-anki)
             app=$(echo "$1" | sed 's/^-//')
             if [ "$REMOVE_MODE" = true ]; then
                 remove_"$app"
