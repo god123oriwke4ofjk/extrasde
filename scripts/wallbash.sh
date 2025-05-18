@@ -10,13 +10,19 @@ SWAYNC_CONFIG_DIR="$HOME/.config/swaync"
 CONFIG_TOML="$HOME/.config/hyde/config.toml"
 
 APPS=("netflix" "steam" "obs" "zen" "spotify" "swaync" "anki")
+CONFIG_APPS=("anki") 
 
 usage() {
     echo "Usage: $0 [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync | -anki] [...]"
+    echo "       $0 -config [-all | -anki] [...]"
     echo "       $0 -remove [-all | -netflix | -steam | -obs | -zen | -spotify | -swaync | -anki]"
-    echo "At least one parameter is required. Use -all to install for all applications."
+    echo "       $0 -remove -config [-all | -anki]"
+    echo "At least one parameter is required."
+    echo "-all: Install/remove for all applications."
+    echo "-config: Install using alternative configuration method (currently supports: anki)."
     echo "Stack parameters to install for multiple apps (e.g., -netflix -steam)."
     echo "For removal, use -remove with -all or an app (e.g., -remove -netflix)."
+    echo "For config removal, use -remove -config with -all or an app (e.g., -remove -config -anki)."
     exit 1
 }
 
@@ -25,7 +31,7 @@ command_exists() {
 }
 
 cleanup() {
-    rm -rf /tmp/netflixWallbash /tmp/steamWallbash /tmp/obsWallbash /tmp/zenWallbash /tmp/spotifyWallbash /tmp/SwayNC-Wallbash /tmp/ankiWallbash
+    rm -rf /tmp/netflixWallbash /tmp/steamWallbash /tmp/obsWallbash /tmp/zenWallbash /tmp/spotifyWallbash /tmp/SwayNC-Wallbash /tmp/ankiWallbash /tmp/ankiDotfiles
 }
 trap cleanup EXIT
 
@@ -86,7 +92,6 @@ install_anki() {
             echo "Error: setup_anki_wallbash.sh not found in Anki wallbash repository"
             exit 1
         fi
-        cd_CONV_1 = true
         cd - >/dev/null || { echo "Error: Failed to return to previous directory"; exit 1; }
         echo "Successfully installed Anki wallbash theme"
     else
@@ -114,6 +119,83 @@ remove_anki() {
         echo "Removed $SCRIPTS/anki.sh"
     fi
     echo "Anki wallbash removed"
+}
+
+install_config_anki() {
+    echo "Checking for Anki..."
+    if pacman -Qs anki >/dev/null 2>&1 || (command_exists yay && yay -Qs anki >/dev/null 2>&1) || flatpak list | grep -q net.ankiweb.Anki; then
+        echo "Installing Anki configuration via dotfiles"
+        ANKI_DOTFILES_REPO="https://github.com/god123oriwke4ofjk/anki-dotfiles"
+        git clone "$ANKI_DOTFILES_REPO" /tmp/ankiDotfiles || { echo "Error: Failed to clone Anki dotfiles repository"; exit 1; }
+        cd /tmp/ankiDotfiles || { echo "Error: Failed to change to /tmp/ankiDotfiles"; exit 1; }
+
+        ANKI2_DIR="$HOME/.local/share/Anki2"
+        BACKUP_DIR="$HOME/.local/share/Anki2_backup_$(date +%Y%m%d_%H%M%S)"
+        if [ -d "$ANKI2_DIR" ]; then
+            echo "Backing up $ANKI2_DIR to $BACKUP_DIR"
+            mv "$ANKI2_DIR" "$BACKUP_DIR" || { echo "Error: Failed to backup $ANKI2_DIR"; exit 1; }
+        fi
+
+        if [ -d .local/share/Anki2 ]; then
+            mkdir -p "$(dirname "$ANKI2_DIR")"
+            cp -r .local/share/Anki2 "$ANKI2_DIR" || { echo "Error: Failed to copy Anki2 directory"; exit 1; }
+            echo "Copied Anki2 directory to $ANKI2_DIR"
+        else
+            echo "Error: .local/share/Anki2 not found in anki-dotfiles repository"
+            exit 1
+        fi
+
+        if [ -f .config/hyde/wallbash/always/anki.dcol ]; then
+            mkdir -p "$ALWAYS"
+            cp -f .config/hyde/wallbash/always/anki.dcol "$ALWAYS/anki.dcol" || { echo "Error: Failed to copy anki.dcol"; exit 1; }
+            echo "Copied anki.dcol to $ALWAYS"
+        else
+            echo "Error: .config/hyde/wallbash/always/anki.dcol not found in anki-dotfiles repository"
+            exit 1
+        fi
+
+        if [ -f .config/hyde/wallbash/scripts/anki.sh ]; then
+            mkdir -p "$SCRIPTS"
+            cp -f .config/hyde/wallbash/scripts/anki.sh "$SCRIPTS/anki.sh" || { echo "Error: Failed to copy anki.sh"; exit 1; }
+            chmod +x "$SCRIPTS/anki.sh" || { echo "Error: Failed to set permissions on anki.sh"; exit 1; }
+            echo "Copied anki.sh to $SCRIPTS"
+        else
+            echo "Error: .config/hyde/wallbash/scripts/anki.sh not found in anki-dotfiles repository"
+            exit 1
+        fi
+
+        cd - >/dev/null || { echo "Error: Failed to return to previous directory"; exit 1; }
+        echo "Successfully installed Anki configuration via dotfiles"
+    else
+        echo "Anki not found (not installed via pacman, AUR, or Flatpak). Skipping Anki configuration setup."
+    fi
+}
+
+remove_config_anki() {
+    echo "Removing Anki configuration..."
+    ANKI2_DIR="$HOME/.local/share/Anki2"
+    BACKUP_DIR=$(find "$HOME/.local/share" -maxdepth 1 -type d -name 'Anki2_backup_*' | sort -r | head -n 1)
+    if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+        echo "Restoring $BACKUP_DIR to $ANKI2_DIR"
+        rm -rf "$ANKI2_DIR" || { echo "Error: Failed to remove current $ANKI2_DIR"; exit 1; }
+        mv "$BACKUP_DIR" "$ANKI2_DIR" || { echo "Error: Failed to restore $BACKUP_DIR"; exit 1; }
+        echo "Restored $ANKI2_DIR from backup"
+    else
+        echo "No backup found for $ANKI2_DIR. Removing current directory if it exists."
+        rm -rf "$ANKI2_DIR" || { echo "Error: Failed to remove $ANKI2_DIR"; exit 1; }
+    fi
+
+    if [ -f "$ALWAYS/anki.dcol" ]; then
+        rm -f "$ALWAYS/anki.dcol" || { echo "Error: Failed to remove anki.dcol"; exit 1; }
+        echo "Removed $ALWAYS/anki.dcol"
+    fi
+
+    if [ -f "$SCRIPTS/anki.sh" ]; then
+        rm -f "$SCRIPTS/anki.sh" || { echo "Error: Failed to remove anki.sh"; exit 1; }
+        echo "Removed $SCRIPTS/anki.sh"
+    fi
+
+    echo "Anki configuration removed"
 }
 
 install_steam() {
@@ -407,6 +489,7 @@ fi
 mkdir -p "$ALWAYS" "$SCRIPTS" "$(dirname "$SPICETIFY_CSS_DEST")" "$SWAYNC_CONFIG_DIR"
 
 REMOVE_MODE=false
+CONFIG_MODE=false
 INSTALL_ALL=false
 INSTALL_APPS=()
 
@@ -416,12 +499,23 @@ while [ $# -gt 0 ]; do
             REMOVE_MODE=true
             shift
             ;;
+        -config)
+            CONFIG_MODE=true
+            shift
+            ;;
         -all)
             if [ "$REMOVE_MODE" = true ]; then
-                for app in "${APPS[@]}"; do
-                    remove_"$app"
-                done
-                echo "All wallbash configurations removed"
+                if [ "$CONFIG_MODE" = true ]; then
+                    for app in "${CONFIG_APPS[@]}"; do
+                        remove_config_"$app"
+                    done
+                    echo "All config-based configurations removed"
+                else
+                    for app in "${APPS[@]}"; do
+                        remove_"$app"
+                    done
+                    echo "All wallbash configurations removed"
+                fi
                 exit 0
             else
                 INSTALL_ALL=true
@@ -431,7 +525,16 @@ while [ $# -gt 0 ]; do
         -netflix|-steam|-obs|-zen|-spotify|-swaync|-anki)
             app=$(echo "$1" | sed 's/^-//')
             if [ "$REMOVE_MODE" = true ]; then
-                remove_"$app"
+                if [ "$CONFIG_MODE" = true ]; then
+                    if [[ " ${CONFIG_APPS[*]} " =~ " $app " ]]; then
+                        remove_config_"$app"
+                    else
+                        echo "Error: -config not supported for $app"
+                        exit 1
+                    fi
+                else
+                    remove_"$app"
+                fi
             else
                 INSTALL_APPS+=("$app")
             fi
@@ -445,11 +548,26 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$REMOVE_MODE" = true ] && [ ${#INSTALL_APPS[@]} -eq 0 ] && [ "$INSTALL_ALL" = false ]; then
-    echo "Error: -remove requires -all or an application parameter (e.g., -netflix)"
+    echo "Error: -remove requires -all or an application parameter (e.g., -netflix or -config -anki)"
     usage
 fi
 
-if [ "$INSTALL_ALL" = true ]; then
+if [ "$CONFIG_MODE" = true ] && [ "$REMOVE_MODE" = false ]; then
+    if [ "$INSTALL_ALL" = true ]; then
+        for app in "${CONFIG_APPS[@]}"; do
+            install_config_"$app"
+        done
+    else
+        for app in "${INSTALL_APPS[@]}"; do
+            if [[ " ${CONFIG_APPS[*]} " =~ " $app " ]]; then
+                install_config_"$app"
+            else
+                echo "Error: -config not supported for $app"
+                exit 1
+            fi
+        done
+    fi
+elif [ "$INSTALL_ALL" = true ]; then
     for app in "${APPS[@]}"; do
         install_"$app"
     done
