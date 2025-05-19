@@ -25,7 +25,6 @@ VESKTOP_PLUGINS_TO_ENABLE=(
     "SpotifyCrack"
 )
 
-# Parse arguments
 INSTALL_OSU=false
 INSTALL_LTS=false
 for arg in "$@"; do
@@ -35,6 +34,11 @@ for arg in "$@"; do
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
 done
+
+hydectl theme import --name "Oxo Carbon" -url https://github.com/rishav12s/Oxo-Carbon
+hydectl theme import --name "Crimson Blue" -url https://github.com/amit-0i/Crimson-Blue
+hydectl theme import --name "Eternal Arctic" -url https://github.com/rishav12s/Eternal-Arctic
+hydectl theme import --name "Vanta Black" -url https://github.com/rishav12s/Vanta-Black
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
@@ -63,9 +67,7 @@ else
 fi
 
 echo "Installing pacman packages"
-# Base packages
 PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad"
-# Conditionally add LTS kernel packages
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
