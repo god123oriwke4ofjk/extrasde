@@ -6,6 +6,11 @@ declare -A browsers=(
     ["zen"]="zen.desktop"
 )
 
+declare -A flatpak_browsers=(
+    ["firefox"]="org.mozilla.firefox.desktop"
+    ["brave"]="com.brave.Browser.desktop"
+)
+
 LOG_FILE="$HOME/.dynamic_browser.log"
 
 log_message() {
@@ -14,7 +19,7 @@ log_message() {
 
 is_known_browser() {
     local process_name="$1"
-    for browser in "${!browsers[@]}"; do
+    for browser in "${!browsers[@]}" "${!flatpak_browsers[@]}"; do
         if [[ "$process_name" == "$browser" ]]; then
             return 0
         fi
@@ -22,23 +27,43 @@ is_known_browser() {
     return 1
 }
 
+find_desktop_file() {
+    local desktop_file="$1"
+    local dirs="/usr/share/applications ~/.local/share/applications /usr/local/share/applications"
+    if [[ -n "$XDG_DATA_DIRS" ]]; then
+        dirs="$dirs $(echo $XDG_DATA_DIRS | tr ':' ' ')"
+    fi
+    dirs="$dirs ~/.local/share/flatpak/exports/share/applications /var/lib/flatpak/exports/share/applications"
+    for dir in $dirs; do
+        dir=$(eval echo "$dir") 
+        if [[ -f "$dir/$desktop_file" ]]; then
+            echo "$dir/$desktop_file"
+            return 0
+        fi
+    done
+    log_message "Error: Desktop file $desktop_file not found in $dirs"
+    return 1
+}
+
 set_default_browser() {
     local desktop_file="$1"
-    if ! ls /usr/share/applications/"$desktop_file" ~/.local/share/applications/"$desktop_file" >/dev/null 2>&1; then
-        log_message "Error: Desktop file $desktop_file not found"
-        return 1
-    fi
-    current_default=$(xdg-settings get default-web-browser 2>/dev/null)
-    if [[ "$current_default" == "$desktop_file" ]]; then
-        log_message "Default browser already set to $desktop_file, skipping"
-        return 0
-    fi
-    log_message "Setting default browser to $desktop_file"
-    xdg-settings set default-web-browser "$desktop_file"
+    local found_file=$(find_desktop_file "$desktop_file")
     if [[ $? -eq 0 ]]; then
-        log_message "Successfully set $desktop_file as default browser"
+        log_message "Found desktop file: $found_file"
+        local current_default=$(xdg-settings get default-web-browser 2>/dev/null)
+        if [[ "$current_default" == "$desktop_file" ]]; then
+            log_message "Default browser already set to $desktop_file, skipping"
+            return 0
+        fi
+        log_message "Setting default browser to $desktop_file"
+        xdg-settings set default-web-browser "$desktop_file"
+        if [[ $? -eq 0 ]]; then
+            log_message "Successfully set $desktop_file as default browser"
+        else
+            log_message "Failed to set $desktop_file as default browser"
+            return 1
+        fi
     else
-        log_message "Failed to set $desktop_file as default browser"
         return 1
     fi
 }
@@ -79,7 +104,7 @@ monitor_browsers() {
         esac
 
         if [[ -n "$process_name" ]] && is_known_browser "$process_name"; then
-            desktop_file="${browsers[$process_name]}"
+            desktop_file="${browsers[$process_name]:-${flatpak_browsers[$process_name]}}"
             log_message "Detected browser: $process_name ($desktop_file)"
             set_default_browser "$desktop_file"
         fi
