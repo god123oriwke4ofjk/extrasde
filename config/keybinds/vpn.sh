@@ -8,9 +8,23 @@ SOURCE_SERVERS_DIR="$HOME/Extra/config/servers"
 SCRAPER_SCRIPT="$HOME/Extra/config/vpnbook-password-scraper.sh"
 ICON_DIR="$HOME/.local/share/icons/Wallbash-Icon"
 LOCK_FILE="$HOME/.config/vpn/scraper.lock"
+NOTIF_ID=1000 
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+check_sudo_permissions() {
+    if ! sudo -n openvpn --version >/dev/null 2>&1; then
+        echo "Error: Passwordless sudo for openvpn is not configured."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Passwordless sudo for openvpn is not configured. Run 'sudo visudo' and add: $USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn"
+        exit 1
+    fi
+    if ! sudo -n killall openvpn >/dev/null 2>&1; then
+        echo "Error: Passwordless sudo for killall openvpn is not configured."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Passwordless sudo for killall openvpn is not configured. Run 'sudo visudo' and add: $USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn"
+        exit 1
+    fi
 }
 
 is_vpn_running() {
@@ -34,17 +48,17 @@ send_connecting_notification() {
     local dot_index=0
     local icon_index=0
     local start_time=$(date +%s)
-    local timeout=20 
+    local timeout=15
 
     while kill -0 "$pid" 2>/dev/null; do
         current_time=$(date +%s)
         elapsed=$((current_time - start_time))
         if [[ $elapsed -ge $timeout ]]; then
             sudo kill "$pid" 2>/dev/null
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Connection Failed" "Connection timed out after 20 seconds."
+            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Connection timed out after 20 seconds."
             exit 1
         fi
-        notify-send -u normal -i "$ICON_DIR/${icons[icon_index]}" "VPN Connecting${dots[dot_index]}" "Attempting to connect to VPN..."
+        notify-send -u normal -i "$ICON_DIR/${icons[icon_index]}" -r "$NOTIF_ID" "VPN Connecting${dots[dot_index]}" "Attempting to connect to VPN..."
         dot_index=$(( (dot_index + 1) % 3 ))
         icon_index=$(( (icon_index + 1) % 5 ))
         sleep 0.2 
@@ -66,6 +80,8 @@ run_scraper() {
 }
 
 toggle_vpn() {
+    check_sudo_permissions
+
     if is_scraper_running; then
         echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
@@ -107,22 +123,25 @@ toggle_vpn() {
             echo "Authentication failed. Triggering credential scraper..."
             rm -f "$temp_log"
             run_scraper &
+            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Authentication failed. Scraping new credentials..."
             exit 1
         fi
         rm -f "$temp_log"
         if is_vpn_running; then
             local server_name=$(basename "$server" .ovpn)
-            notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Connected" "Connected to $server_name."
+            notify-send -u normal -i "$ICON_DIR/vpn.svg" -r "$NOTIF_ID" "VPN Connected" "Connected to $server_name."
             echo "VPN connected successfully."
         else
             echo "Error: Failed to connect to VPN."
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Connection Failed" "Failed to connect to $server."
+            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Failed to connect to $server."
             exit 1
         fi
     fi
 }
 
 setup_vpn() {
+    check_sudo_permissions
+
     if is_scraper_running; then
         echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Please wait until credential scraping is complete."
