@@ -8,22 +8,36 @@ SOURCE_SERVERS_DIR="$HOME/Extra/config/servers"
 SCRAPER_SCRIPT="$HOME/Extra/config/vpnbook-password-scraper.sh"
 ICON_DIR="$HOME/.local/share/icons/Wallbash-Icon"
 LOCK_FILE="$HOME/.config/vpn/scraper.lock"
-NOTIF_ID=1000 
+NOTIF_ID=1000
+INSTALL_SCRIPT="$HOME/Extra/install.sh"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
 check_sudo_permissions() {
+    local sudoers_missing=false
     if ! sudo -n openvpn --version >/dev/null 2>&1; then
         echo "Error: Passwordless sudo for openvpn is not configured."
-        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Passwordless sudo for openvpn is not configured. Run 'sudo visudo' and add: $USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn"
-        exit 1
+        sudoers_missing=true
     fi
     if ! sudo -n killall openvpn >/dev/null 2>&1; then
         echo "Error: Passwordless sudo for killall openvpn is not configured."
-        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Passwordless sudo for killall openvpn is not configured. Run 'sudo visudo' and add: $USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn"
-        exit 1
+        sudoers_missing=true
+    fi
+    if [ "$sudoers_missing" = true ]; then
+        echo "Running $INSTALL_SCRIPT --sudoers to configure sudoers..."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "Configuring Sudoers" "Running install.sh --sudoers to set up passwordless sudo..."
+        bash "$INSTALL_SCRIPT" --sudoers || {
+            notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
+            exit 1
+        }
+        if ! sudo -n openvpn --version >/dev/null 2>&1 || ! sudo -n killall openvpn >/dev/null 2>&1; then
+            notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
+            exit 1
+        fi
+        echo "Sudoers configured successfully."
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" "Sudoers Configured" "Passwordless sudo configured successfully."
     fi
 }
 
@@ -49,19 +63,18 @@ send_connecting_notification() {
     local icon_index=0
     local start_time=$(date +%s)
     local timeout=15
-
     while kill -0 "$pid" 2>/dev/null; do
         current_time=$(date +%s)
         elapsed=$((current_time - start_time))
         if [[ $elapsed -ge $timeout ]]; then
             sudo kill "$pid" 2>/dev/null
-            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Connection timed out after 20 seconds."
+            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Connection timed out after 15 seconds."
             exit 1
         fi
         notify-send -u normal -i "$ICON_DIR/${icons[icon_index]}" -r "$NOTIF_ID" "VPN Connecting${dots[dot_index]}" "Attempting to connect to VPN..."
         dot_index=$(( (dot_index + 1) % 3 ))
         icon_index=$(( (icon_index + 1) % 5 ))
-        sleep 0.2 
+        sleep 0.2
     done
 }
 
@@ -81,13 +94,11 @@ run_scraper() {
 
 toggle_vpn() {
     check_sudo_permissions
-
     if is_scraper_running; then
         echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
         exit 1
     fi
-
     if is_vpn_running; then
         echo "Disconnecting VPN..."
         sudo killall openvpn
@@ -141,38 +152,31 @@ toggle_vpn() {
 
 setup_vpn() {
     check_sudo_permissions
-
     if is_scraper_running; then
         echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Please wait until credential scraping is complete."
         exit 1
     fi
-
     echo "Checking and installing dependencies..."
-
     sudo pacman -Syu --noconfirm
-
     if ! command_exists openvpn; then
         echo "Installing openvpn..."
         sudo pacman -S --noconfirm openvpn
     else
         echo "openvpn is already installed."
     fi
-
     if ! command_exists nm-openvpn; then
         echo "Installing networkmanager-openvpn..."
         sudo pacman -S --noconfirm networkmanager-openvpn
     else
         echo "networkmanager-openvpn is already installed."
     fi
-
     if ! command_exists notify-send; then
         echo "Installing libnotify for notifications..."
         sudo pacman -S --noconfirm libnotify
     else
         echo "libnotify is already installed."
     fi
-
     if [[ ! -f "$AUTH_FILE" ]]; then
         echo "Running vpnbook-password-scraper.sh to create auth.txt..."
         touch "$LOCK_FILE"
@@ -191,9 +195,7 @@ setup_vpn() {
     else
         echo "auth.txt already exists at $AUTH_FILE."
     fi
-
     mkdir -p "$SERVERS_DIR"
-
     echo "Synchronizing servers from $SOURCE_SERVERS_DIR to $SERVERS_DIR..."
     rm -rf "$SERVERS_DIR"/*
     cp -r "$SOURCE_SERVERS_DIR"/* "$SERVERS_DIR"/
@@ -204,7 +206,6 @@ setup_vpn() {
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Failed to synchronize servers from $SOURCE_SERVERS_DIR."
         exit 1
     fi
-
     echo "Setup complete."
     notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Setup Complete" "Dependencies and servers configured successfully."
 }
