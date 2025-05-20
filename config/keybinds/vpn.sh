@@ -6,6 +6,8 @@ AUTH_FILE="$HOME/.config/vpn/auth.txt"
 SERVERS_DIR="$HOME/.config/vpn/servers"
 SOURCE_SERVERS_DIR="$HOME/Extra/config/servers"
 SCRAPER_SCRIPT="$HOME/Extra/config/vpnbook-password-scraper.sh"
+ICON_DIR="$HOME/.local/share/icons/Wallbash-Icon"
+LOCK_FILE="$HOME/.config/vpn/scraper.lock"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -15,45 +17,118 @@ is_vpn_running() {
     pgrep openvpn >/dev/null 2>&1
 }
 
+is_scraper_running() {
+    [[ -f "$LOCK_FILE" ]]
+}
+
 get_random_server() {
     local folder
     folder=$(ls -d "$SERVERS_DIR"/*/ | shuf -n 1)
     find "$folder" -name "*.ovpn" | shuf -n 1
 }
 
+send_connecting_notification() {
+    local pid=$1
+    local dots=("." ".." "...")
+    local icons=("loading1.svg" "loading2.svg" "loading3.svg" "loading4.svg" "loading5.svg")
+    local dot_index=0
+    local icon_index=0
+    local start_time=$(date +%s)
+    local timeout=20 
+
+    while kill -0 "$pid" 2>/dev/null; do
+        current_time=$(date +%s)
+        elapsed=$((current_time - start_time))
+        if [[ $elapsed -ge $timeout ]]; then
+            sudo kill "$pid" 2>/dev/null
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Connection Failed" "Connection timed out after 20 seconds."
+            exit 1
+        fi
+        notify-send -u normal -i "$ICON_DIR/${icons[icon_index]}" "VPN Connecting${dots[dot_index]}" "Attempting to connect to VPN..."
+        dot_index=$(( (dot_index + 1) % 3 ))
+        icon_index=$(( (icon_index + 1) % 5 ))
+        sleep 0.2 
+    done
+}
+
+run_scraper() {
+    touch "$LOCK_FILE"
+    notify-send -u critical -i "$ICON_DIR/error.svg" "Scraping New Credentials" "Authentication failed. Scraping new credentials, please wait..."
+    bash "$SCRAPER_SCRIPT" && {
+        chmod 600 "$AUTH_FILE" 2>/dev/null
+        rm -f "$LOCK_FILE"
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" "Credentials Updated" "New VPN credentials have been scraped successfully."
+    } || {
+        rm -f "$LOCK_FILE"
+        notify-send -u critical -i "$ICON_DIR/error.svg" "Scraper Error" "Failed to scrape new credentials."
+        exit 1
+    }
+}
+
 toggle_vpn() {
+    if is_scraper_running; then
+        echo "Error: Credential scraper is running."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
+        exit 1
+    fi
+
     if is_vpn_running; then
         echo "Disconnecting VPN..."
         sudo killall openvpn
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
         echo "VPN disconnected."
     else
         if [[ ! -f "$AUTH_FILE" ]]; then
             echo "Error: Authentication file $AUTH_FILE not found."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
             exit 1
         fi
         if [[ ! -d "$SERVERS_DIR" ]]; then
             echo "Error: Servers directory $SERVERS_DIR not found."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
             exit 1
         fi
         local server
         server=$(get_random_server)
         if [[ -z "$server" ]]; then
             echo "Error: No .ovpn files found in $SERVERS_DIR."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
             exit 1
         fi
         echo "Connecting to VPN using $server..."
-        sudo openvpn --config "$server" --auth-user-pass "$AUTH_FILE" --daemon
-        sleep 2 
+        local temp_log=$(mktemp)
+        sudo openvpn --config "$server" --auth-user-pass "$AUTH_FILE" --daemon --log "$temp_log" &
+        local vpn_pid=$!
+        send_connecting_notification "$vpn_pid" &
+        local notif_pid=$!
+        wait "$vpn_pid" 2>/dev/null
+        kill "$notif_pid" 2>/dev/null
+        if grep -q "AUTH_FAILED" "$temp_log" 2>/dev/null; then
+            echo "Authentication failed. Triggering credential scraper..."
+            rm -f "$temp_log"
+            run_scraper &
+            exit 1
+        fi
+        rm -f "$temp_log"
         if is_vpn_running; then
+            local server_name=$(basename "$server" .ovpn)
+            notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Connected" "Connected to $server_name."
             echo "VPN connected successfully."
         else
             echo "Error: Failed to connect to VPN."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Connection Failed" "Failed to connect to $server."
             exit 1
         fi
     fi
 }
 
 setup_vpn() {
+    if is_scraper_running; then
+        echo "Error: Credential scraper is running."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Please wait until credential scraping is complete."
+        exit 1
+    fi
+
     echo "Checking and installing dependencies..."
 
     sudo pacman -Syu --noconfirm
@@ -72,14 +147,27 @@ setup_vpn() {
         echo "networkmanager-openvpn is already installed."
     fi
 
+    if ! command_exists notify-send; then
+        echo "Installing libnotify for notifications..."
+        sudo pacman -S --noconfirm libnotify
+    else
+        echo "libnotify is already installed."
+    fi
+
     if [[ ! -f "$AUTH_FILE" ]]; then
         echo "Running vpnbook-password-scraper.sh to create auth.txt..."
-        bash "$SCRAPER_SCRIPT"
-        if [[ ! -f "$AUTH_FILE" ]]; then
+        touch "$LOCK_FILE"
+        notify-send -u critical -i "$ICON_DIR/error.svg" "Scraping New Credentials" "Setting up auth.txt, please wait..."
+        bash "$SCRAPER_SCRIPT" && {
+            chmod 600 "$AUTH_FILE" 2>/dev/null
+            rm -f "$LOCK_FILE"
+            notify-send -u normal -i "$ICON_DIR/vpn.svg" "Credentials Updated" "New VPN credentials have been scraped successfully."
+        } || {
+            rm -f "$LOCK_FILE"
             echo "Error: vpnbook-password-scraper.sh failed to create $AUTH_FILE."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Failed to create $AUTH_FILE."
             exit 1
-        fi
-        chmod 600 "$AUTH_FILE"
+        }
         echo "auth.txt created at $AUTH_FILE."
     else
         echo "auth.txt already exists at $AUTH_FILE."
@@ -94,10 +182,12 @@ setup_vpn() {
         echo "Servers synchronized successfully."
     else
         echo "Error: Failed to synchronize servers from $SOURCE_SERVERS_DIR."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Failed to synchronize servers from $SOURCE_SERVERS_DIR."
         exit 1
     fi
 
     echo "Setup complete."
+    notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Setup Complete" "Dependencies and servers configured successfully."
 }
 
 case "$1" in
