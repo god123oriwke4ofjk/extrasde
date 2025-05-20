@@ -24,6 +24,7 @@ SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 # Parse parameters
 BROWSER_ONLY=false
 KEYBIND_ONLY=false
+SUDOERS_ONLY=false
 NO_DYNAMIC=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
@@ -39,6 +40,10 @@ while [[ "$1" =~ ^- ]]; do
             KEYBIND_ONLY=true
             shift
             ;;
+        --sudoers)
+            SUDOERS_ONLY=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -46,17 +51,68 @@ while [[ "$1" =~ ^- ]]; do
     esac
 done
 
-# Create necessary directories (always needed for browser or keybind setup)
+# If no parameters are provided, run all tasks unless specific flags are set
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+    BROWSER_ONLY=true
+    KEYBIND_ONLY=true
+    SUDOERS_ONLY=true
+fi
+
+# Create necessary directories (needed for browser, keybind, or sudoers setup)
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 # Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
+
+# Sudoers setup (executed if --sudoers is used or no parameters)
+if [ "$SUDOERS_ONLY" = true ] || [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
+    # Prompt for sudo password upfront
+    echo "Configuring sudoers requires sudo privileges."
+    sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
+
+    # Configure sudoers for openvpn and killall
+    if [ ! -f "$SUDOERS_FILE" ]; then
+        echo "Configuring sudoers to allow NOPASSWD for openvpn and killall..."
+        sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
+$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn
+EOF" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
+        sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+        if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+            echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+            sudo rm -f "$SUDOERS_FILE"
+            exit 1
+        fi
+        echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
+        echo "Created $SUDOERS_FILE for $USER"
+    else
+        if ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn" "$SUDOERS_FILE" || ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn" "$SUDOERS_FILE"; then
+            echo "Updating existing sudoers file..."
+            current_timestamp=$(date +%s)
+            sudo cp "$SUDOERS_FILE" "$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
+            sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
+$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn
+EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
+            sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+            if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+                echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+                sudo rm -f "$SUDOERS_FILE"
+                exit 1
+            fi
+            echo "MODIFIED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
+            echo "Updated $SUDOERS_FILE for $USER"
+        else
+            echo "Skipping: Sudoers already configured for $USER"
+        fi
+    fi
+fi
 
 # Keybind setup (executed if --keybind is used or no parameters)
-if [ "$KEYBIND_ONLY" = true ] || [ "$BROWSER_ONLY" = false ]; then
+if [ "$KEYBIND_ONLY" = true ] || [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
     # Configure keybindings
     if [ ! -f "$KEYBINDINGS_CONF" ]; then
         echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
@@ -67,9 +123,7 @@ if [ "$KEYBIND_ONLY" = true ] || [ "$BROWSER_ONLY" = false ]; then
 
     # Backup keybindings.conf, removing any previous backups
     if [ -f "$KEYBINDINGS_CONF" ]; then
-        # Remove any existing keybindings.conf.bak in BACKUP_DIR
         find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete || { echo "Warning: Failed to delete previous keybindings.conf.bak"; }
-        # Create new backup
         cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak" || { echo "Error: Failed to backup $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"; exit 1; }
         echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
         echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
@@ -201,7 +255,7 @@ bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.s
 fi
 
 # Browser setup (executed if --browser or --browser nodynamic is used or no parameters)
-if [ "$BROWSER_ONLY" = true ] || [ "$KEYBIND_ONLY" = false ]; then
+if [ "$BROWSER_ONLY" = true ] && [ "$SUDOERS_ONLY" = false ] || [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
     # Install dynamic-browser.sh (skipped if --browser nodynamic)
     if [ "$NO_DYNAMIC" = false ]; then
         declare -A scripts
@@ -339,10 +393,10 @@ if [ "$BROWSER_ONLY" = true ] || [ "$KEYBIND_ONLY" = false ]; then
     fi
 fi
 
-# Non-browser and non-keybind setup (skipped if --browser or --keybind is used)
-if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
+# Non-browser, non-keybind, non-sudoers setup (executed only if no parameters or combined with --sudoers)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
     # Prompt for sudo password upfront
-    echo "This script requires sudo privileges to install dependencies and configure sudoers."
+    echo "This script requires sudo privileges to install dependencies and configure additional settings."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
 
     # Validate system requirements
@@ -352,43 +406,6 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
     # Create additional directories
     mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
     mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
-
-    # Configure sudoers for openvpn and kill
-    if [ ! -f "$SUDOERS_FILE" ]; then
-        echo "Configuring sudoers to allow NOPASSWD for openvpn and kill..."
-        sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
-$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
-$USER ALL=(ALL) NOPASSWD: /bin/kill
-EOF" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
-        sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
-        if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-            echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
-            sudo rm -f "$SUDOERS_FILE"
-            exit 1
-        fi
-        echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
-        echo "Created $SUDOERS_FILE for $USER"
-    else
-        if ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn" "$SUDOERS_FILE" || ! grep -q "$USER ALL=(ALL) NOPASSWD: /bin/kill" "$SUDOERS_FILE"; then
-            echo "Updating existing sudoers file..."
-            current_timestamp=$(date +%s)
-            sudo cp "$SUDOERS_FILE" "$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
-            sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
-$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
-$USER ALL=(ALL) NOPASSWD: /bin/kill
-EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
-            sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
-            if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-                echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
-                sudo rm -f "$SUDOERS_FILE"
-                exit 1
-            fi
-            echo "MODIFIED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
-            echo "Updated $SUDOERS_FILE for $USER"
-        else
-            echo "Skipping: Sudoers already configured for $USER"
-        fi
-    fi
 
     # Delete backups from the previous run
     current_timestamp=$(date +%s)
@@ -497,8 +514,8 @@ EOF
     fi
 fi
 
-# Create backup session marker (only if not in keybind-only or browser-only mode)
-if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
+# Create backup session marker (only if not in keybind-only, browser-only, or sudoers-only mode)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
     current_timestamp=$(date +%s)
     touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
     echo "Created backup session marker for run at $current_timestamp"
