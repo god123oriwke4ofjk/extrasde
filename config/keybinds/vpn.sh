@@ -55,6 +55,16 @@ get_random_server() {
     find "$folder" -name "*.ovpn" | shuf -n 1
 }
 
+get_current_server() {
+    local pid
+    pid=$(pgrep openvpn)
+    if [[ -n "$pid" ]]; then
+        local cmdline
+        cmdline=$(cat /proc/"$pid"/cmdline 2>/dev/null | tr '\0' ' ')
+        echo "$cmdline" | grep -o -- "--config [^ ]*" | cut -d' ' -f2
+    fi
+}
+
 send_connecting_notification() {
     local pid=$1
     local dots=("." ".." "...")
@@ -92,6 +102,201 @@ run_scraper() {
     }
 }
 
+map_country() {
+    local input
+    input=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    case "$input" in
+        us|usa|unitedstates) echo "usa";;
+        fr|france) echo "france";;
+        uk|england|greatbritain) echo "england";;
+        *) echo "$input";;
+    esac
+}
+
+connect_to_server() {
+    local server=$1
+    local temp_log=$(mktemp)
+    sudo openvpn --config "$server" --auth-user-pass "$AUTH_FILE" --daemon --log "$temp_log" &
+    local vpn_pid=$!
+    send_connecting_notification "$vpn_pid" &
+    local notif_pid=$!
+    wait "$vpn_pid" 2>/dev/null
+    kill "$notif_pid" 2>/dev/null
+    if grep -q "AUTH_FAILED" "$temp_log" 2>/dev/null; then
+        echo "Authentication failed. Triggering credential scraper..."
+        rm -f "$temp_log"
+        run_scraper &
+        notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Authentication failed. Scraping new credentials..."
+        exit 1
+    fi
+    rm -f "$temp_log"
+    if is_vpn_running; then
+        local server_name=$(basename "$server" .ovpn)
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" -r "$NOTIF_ID" "VPN Connected" "Connected to $server_name."
+        echo "VPN connected successfully."
+    else
+        echo "Error: Failed to connect to VPN."
+        notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Failed to connect to $server."
+        exit 1
+    fi
+}
+
+connect_vpn() {
+    check_sudo_permissions
+    if is_scraper_running; then
+        echo "Error: Credential scraper is running."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
+        exit 1
+    fi
+    if is_vpn_running; then
+        echo "Error: VPN is already connected."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Disconnect the current VPN before connecting to a new one."
+        exit 1
+    fi
+    if [[ ! -f "$AUTH_FILE" ]]; then
+        echo "Error: Authentication file $AUTH_FILE not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
+        exit 1
+    fi
+    if [[ ! -d "$SERVERS_DIR" ]]; then
+        echo "Error: Servers directory $SERVERS_DIR not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
+        exit 1
+    fi
+    if [[ -z "$1" ]]; then
+        echo "Error: Missing argument for connect. Usage: vpn.sh connect {random|<country>|<country_code>|<server_name>}"
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Missing argument for connect. Use random, country, country code, or server name."
+        exit 1
+    fi
+    if [[ "$1" == "random" ]]; then
+        local server
+        server=$(get_random_server)
+        if [[ -z "$server" ]]; then
+            echo "Error: No .ovpn files found in $SERVERS_DIR."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
+            exit 1
+        fi
+        echo "Connecting to VPN using $server..."
+        connect_to_server "$server"
+    else
+        local country_dir
+        country_dir=$(map_country "$1")
+        if [[ -d "$SERVERS_DIR/$country_dir" ]]; then
+            local servers
+            servers=$(find "$SERVERS_DIR/$country_dir" -name "*.ovpn")
+            if [[ -z "$servers" ]]; then
+                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir."
+                notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No servers found for $country_dir."
+                exit 1
+            fi
+            local server
+            server=$(echo "$servers" | shuf -n 1)
+            echo "Connecting to VPN using $server..."
+            connect_to_server "$server"
+        else
+            local server
+            server=$(find "$SERVERS_DIR" -name "$1" -type f)
+            if [[ -n "$server" ]]; then
+                echo "Connecting to VPN using $server..."
+                connect_to_server "$server"
+            else
+                echo "Error: Invalid country, country code, or server name: $1"
+                notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Invalid country, country code, or server name: $1"
+                exit 1
+            fi
+        fi
+    fi
+}
+
+change_vpn() {
+    check_sudo_permissions
+    if is_scraper_running; then
+        echo "Error: Credential scraper is running."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
+        exit 1
+    fi
+    if ! is_vpn_running; then
+        echo "Error: No active VPN connection to change."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No active VPN connection to change."
+        exit 1
+    fi
+    if [[ ! -f "$AUTH_FILE" ]]; then
+        echo "Error: Authentication file $AUTH_FILE not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
+        exit 1
+    fi
+    if [[ ! -d "$SERVERS_DIR" ]]; then
+        echo "Error: Servers directory $SERVERS_DIR not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
+        exit 1
+    fi
+    if [[ -z "$1" ]]; then
+        echo "Error: Missing argument for change. Usage: vpn.sh change {random|<country>|<country_code>|<server_name>}"
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Missing argument for change. Use random, country, country code, or server name."
+        exit 1
+    fi
+    local current_server
+    current_server=$(get_current_server)
+    sudo killall openvpn
+    notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
+    echo "VPN disconnected."
+    if [[ "$1" == "random" ]]; then
+        local server
+        while true; do
+            server=$(get_random_server)
+            if [[ -z "$server" ]]; then
+                echo "Error: No .ovpn files found in $SERVERS_DIR."
+                notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
+                exit 1
+            fi
+            if [[ "$server" != "$current_server" ]]; then
+                break
+            fi
+        done
+        echo "Changing VPN to $server..."
+        connect_to_server "$server"
+    else
+        local country_dir
+        country_dir=$(map_country "$1")
+        if [[ -d "$SERVERS_DIR/$country_dir" ]]; then
+            local servers
+            servers=$(find "$SERVERS_DIR/$country_dir" -name "*.ovpn")
+            if [[ -z "$servers" ]]; then
+                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir."
+                notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No servers found for $country_dir."
+                exit 1
+            fi
+            local server
+            if [[ $(echo "$servers" | wc -l) -eq 1 ]]; then
+                server="$servers"
+            else
+                server=$(echo "$servers" | grep -v "$current_server" | shuf -n 1)
+                if [[ -z "$server" ]]; then
+                    server=$(echo "$servers" | shuf -n 1)
+                fi
+            fi
+            echo "Changing VPN to $server..."
+            connect_to_server "$server"
+        else
+            local server
+            server=$(find "$SERVERS_DIR" -name "$1" -type f)
+            if [[ -n "$server" ]]; then
+                if [[ "$server" == "$current_server" ]]; then
+                    echo "Error: Already connected to $1."
+                    notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Already connected to $1."
+                    exit 1
+                fi
+                echo "Changing VPN to $server..."
+                connect_to_server "$server"
+            else
+                echo "Error: Invalid country, country code, or server name: $1"
+                notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Invalid country, country code, or server name: $1"
+                exit 1
+            fi
+        fi
+    fi
+}
+
 toggle_vpn() {
     check_sudo_permissions
     if is_scraper_running; then
@@ -105,48 +310,7 @@ toggle_vpn() {
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
         echo "VPN disconnected."
     else
-        if [[ ! -f "$AUTH_FILE" ]]; then
-            echo "Error: Authentication file $AUTH_FILE not found."
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
-            exit 1
-        fi
-        if [[ ! -d "$SERVERS_DIR" ]]; then
-            echo "Error: Servers directory $SERVERS_DIR not found."
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
-            exit 1
-        fi
-        local server
-        server=$(get_random_server)
-        if [[ -z "$server" ]]; then
-            echo "Error: No .ovpn files found in $SERVERS_DIR."
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
-            exit 1
-        fi
-        echo "Connecting to VPN using $server..."
-        local temp_log=$(mktemp)
-        sudo openvpn --config "$server" --auth-user-pass "$AUTH_FILE" --daemon --log "$temp_log" &
-        local vpn_pid=$!
-        send_connecting_notification "$vpn_pid" &
-        local notif_pid=$!
-        wait "$vpn_pid" 2>/dev/null
-        kill "$notif_pid" 2>/dev/null
-        if grep -q "AUTH_FAILED" "$temp_log" 2>/dev/null; then
-            echo "Authentication failed. Triggering credential scraper..."
-            rm -f "$temp_log"
-            run_scraper &
-            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Authentication failed. Scraping new credentials..."
-            exit 1
-        fi
-        rm -f "$temp_log"
-        if is_vpn_running; then
-            local server_name=$(basename "$server" .ovpn)
-            notify-send -u normal -i "$ICON_DIR/vpn.svg" -r "$NOTIF_ID" "VPN Connected" "Connected to $server_name."
-            echo "VPN connected successfully."
-        else
-            echo "Error: Failed to connect to VPN."
-            notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Failed to connect to $server."
-            exit 1
-        fi
+        connect_vpn random
     fi
 }
 
@@ -260,14 +424,22 @@ case "$1" in
     list)
         list_servers
         ;;
+    connect)
+        connect_vpn "$2"
+        ;;
+    change)
+        change_vpn "$2"
+        ;;
     setup)
         setup_vpn
         ;;
     *)
-        echo "Usage: $0 {toggle|disconnect|list|setup}"
+        echo "Usage: $0 {toggle|disconnect|list|connect|change|setup}"
         echo "  toggle: Connects or disconnects a random VPNBook server."
         echo "  disconnect: Disconnects the VPN if connected, else outputs not connected."
         echo "  list: Lists all available VPN servers and their locations."
+        echo "  connect {random|<country>|<country_code>|<server_name>}: Connects to a random server, a random server in the specified country, or a specific server."
+        echo "  change {random|<country>|<country_code>|<server_name>}: Changes the current VPN connection to a different server or country."
         echo "  setup: Installs dependencies, runs vpnbook-password-scraper.sh if needed, and syncs servers."
         exit 1
         ;;
