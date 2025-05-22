@@ -150,6 +150,46 @@ toggle_vpn() {
     fi
 }
 
+disconnect_vpn() {
+    check_sudo_permissions
+    if is_vpn_running; then
+        echo "Disconnecting VPN..."
+        sudo killall openvpn
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
+        echo "VPN disconnected."
+    else
+        echo "VPN is not connected."
+        notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Not Connected" "No active VPN connection."
+    fi
+}
+
+list_servers() {
+    if [[ ! -d "$SERVERS_DIR" ]]; then
+        echo "Error: Servers directory $SERVERS_DIR not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
+        exit 1
+    fi
+    local found=false
+    echo "Available VPN servers:"
+    for location in "$SERVERS_DIR"/*; do
+        if [[ -d "$location" ]]; then
+            local loc_name=$(basename "$location")
+            for server in "$location"/*.ovpn; do
+                if [[ -f "$server" ]]; then
+                    found=true
+                    echo "Location: $loc_name, Server: $(basename "$server")"
+                fi
+            done
+        fi
+    done
+    if [ "$found" = false ]; then
+        echo "No .ovpn files found in $SERVERS_DIR."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
+        exit 1
+    fi
+    notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Servers Listed" "Available VPN servers have been listed in the terminal."
+}
+
 setup_vpn() {
     check_sudo_permissions
     if is_scraper_running; then
@@ -214,12 +254,20 @@ case "$1" in
     toggle)
         toggle_vpn
         ;;
+    disconnect)
+        disconnect_vpn
+        ;;
+    list)
+        list_servers
+        ;;
     setup)
         setup_vpn
         ;;
     *)
-        echo "Usage: $0 {toggle|setup}"
+        echo "Usage: $0 {toggle|disconnect|list|setup}"
         echo "  toggle: Connects or disconnects a random VPNBook server."
+        echo "  disconnect: Disconnects the VPN if connected, else outputs not connected."
+        echo "  list: Lists all available VPN servers and their locations."
         echo "  setup: Installs dependencies, runs vpnbook-password-scraper.sh if needed, and syncs servers."
         exit 1
         ;;
