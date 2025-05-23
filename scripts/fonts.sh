@@ -14,10 +14,10 @@ XDG_CACHE_HOME=${XDG_CACHE_HOME:-$HOME/.cache}
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 LOG_FILE="$HOME/.local/lib/hyde/install.log"
 BACKUP_DIR="$HOME/.local/lib/hyde/backups"
-BRAVE_DESKTOP_FILE="com.brave.Browser.desktop"
-ALTERNATE_BRAVE_DESKTOP_FILE="brave-browser.desktop"
+BRAVE_DESKTOP_FILES=("brave-browser.desktop" "com.brave.Browser.desktop")
 SYSTEM_BRAVE_SOURCE_DIR="/usr/share/applications"
-FLATPAK_BRAVE_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
+FLATPAK_USER_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
+FLATPAK_SYSTEM_SOURCE_DIR="/var/lib/flatpak/exports/share/applications"
 USER_DIR="$XDG_DATA_HOME/applications"
 VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
 VESKTOP_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
@@ -56,45 +56,79 @@ else
     echo "[$(date)] SKIPPED: Alef font already installed" >> "$LOG_FILE"
 fi
 
-# Check for Brave installation (system or Flatpak)
+# Check for Brave installation (system, Flatpak, or user directory)
 BRAVE_SOURCE_DIR=""
 BRAVE_FOUND=false
 BRAVE_DESKTOP_FILE_USED=""
-if [ -f "$SYSTEM_BRAVE_SOURCE_DIR/$ALTERNATE_BRAVE_DESKTOP_FILE" ]; then
-    BRAVE_SOURCE_DIR="$SYSTEM_BRAVE_SOURCE_DIR"
-    BRAVE_DESKTOP_FILE_USED="$ALTERNATE_BRAVE_DESKTOP_FILE"
-    BRAVE_FOUND=true
-    echo "[$(date)] DETECTED: Brave installed via system package" >> "$LOG_FILE"
-elif [ -f "$FLATPAK_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] || flatpak list | grep -q com.brave.Browser; then
-    BRAVE_SOURCE_DIR="$FLATPAK_BRAVE_SOURCE_DIR"
-    BRAVE_DESKTOP_FILE_USED="$BRAVE_DESKTOP_FILE"
-    # If com.brave.Browser.desktop doesn't exist, try brave-browser.desktop
-    if [ ! -f "$FLATPAK_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && [ -f "$FLATPAK_BRAVE_SOURCE_DIR/$ALTERNATE_BRAVE_DESKTOP_FILE" ]; then
-        BRAVE_DESKTOP_FILE_USED="$ALTERNATE_BRAVE_DESKTOP_FILE"
-    fi
-    # Last resort: check if brave-browser.desktop is already in USER_DIR
-    if [ ! -f "$FLATPAK_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE_USED" ] && [ -f "$USER_DIR/$ALTERNATE_BRAVE_DESKTOP_FILE" ]; then
+for desktop_file in "${BRAVE_DESKTOP_FILES[@]}"; do
+    if [ -f "$SYSTEM_BRAVE_SOURCE_DIR/$desktop_file" ]; then
+        BRAVE_SOURCE_DIR="$SYSTEM_BRAVE_SOURCE_DIR"
+        BRAVE_DESKTOP_FILE_USED="$desktop_file"
+        BRAVE_FOUND=true
+        echo "[$(date)] DETECTED: Brave installed via system package ($desktop_file)" >> "$LOG_FILE"
+        break
+    elif [ -f "$FLATPAK_USER_SOURCE_DIR/$desktop_file" ]; then
+        BRAVE_SOURCE_DIR="$FLATPAK_USER_SOURCE_DIR"
+        BRAVE_DESKTOP_FILE_USED="$desktop_file"
+        BRAVE_FOUND=true
+        echo "[$(date)] DETECTED: Brave installed via Flatpak (user, $desktop_file)" >> "$LOG_FILE"
+        break
+    elif [ -f "$FLATPAK_SYSTEM_SOURCE_DIR/$desktop_file" ]; then
+        BRAVE_SOURCE_DIR="$FLATPAK_SYSTEM_SOURCE_DIR"
+        BRAVE_DESKTOP_FILE_USED="$desktop_file"
+        BRAVE_FOUND=true
+        echo "[$(date)] DETECTED: Brave installed via Flatpak (system, $desktop_file)" >> "$LOG_FILE"
+        break
+    elif [ -f "$USER_DIR/$desktop_file" ]; then
         BRAVE_SOURCE_DIR="$USER_DIR"
-        BRAVE_DESKTOP_FILE_USED="$ALTERNATE_BRAVE_DESKTOP_FILE"
+        BRAVE_DESKTOP_FILE_USED="$desktop_file"
+        BRAVE_FOUND=true
+        echo "[$(date)] DETECTED: Brave desktop file found in user directory ($desktop_file)" >> "$LOG_FILE"
+        break
     fi
-    BRAVE_FOUND=true
-    echo "[$(date)] DETECTED: Brave installed via Flatpak" >> "$LOG_FILE"
-else
+done
+
+# If not found in standard locations, try system-wide search
+if [ "$BRAVE_FOUND" = false ] && flatpak list | grep -q com.brave.Browser; then
+    echo "[$(date)] DETECTED: Brave installed via Flatpak, searching system for desktop file" >> "$LOG_FILE"
+    for desktop_file in "${BRAVE_DESKTOP_FILES[@]}"; do
+        FOUND_FILE=$(find / -type f -name "$desktop_file" 2>/dev/null | head -n 1)
+        if [ -n "$FOUND_FILE" ]; then
+            BRAVE_SOURCE_DIR="$(dirname "$FOUND_FILE")"
+            BRAVE_DESKTOP_FILE_USED="$desktop_file"
+            BRAVE_FOUND=true
+            echo "[$(date)] DETECTED: Brave desktop file found at $FOUND_FILE" >> "$LOG_FILE"
+            break
+        fi
+    done
+fi
+
+if [ "$BRAVE_FOUND" = false ]; then
     echo "Warning: Brave browser not found in system or Flatpak. Skipping Brave-related modifications."
     echo "[$(date)] WARNING: Brave not found, skipping Brave modifications" >> "$LOG_FILE"
+    echo "Skipping all Brave-related modifications due to no Brave installation detected."
+    echo "[$(date)] SKIPPED: All Brave-related modifications (Brave not installed)" >> "$LOG_FILE"
 fi
 
 if [ "$BRAVE_FOUND" = true ]; then
     mkdir -p "$USER_DIR" || error_exit "Failed to create $USER_DIR directory."
     if [ ! -f "$USER_DIR/$BRAVE_DESKTOP_FILE_USED" ]; then
-        cp "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE_USED" "$USER_DIR/$BRAVE_DESKTOP_FILE_USED" || error_exit "Failed to copy $BRAVE_DESKTOP_FILE_USED to $USER_DIR."
-        echo "CREATED_DESKTOP: $BRAVE_DESKTOP_FILE_USED -> $USER_DIR/$BRAVE_DESKTOP_FILE_USED" >> "$LOG_FILE"
-        echo "Copied $BRAVE_DESKTOP_FILE_USED to $USER_DIR"
+        cp "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE_USED" "$USER_DIR/$BRAVE_DESKTOP_FILE_USED" || {
+            echo "Warning: Failed to copy $BRAVE_DESKTOP_FILE_USED to $USER_DIR. Skipping Brave modifications."
+            echo "[$(date)] WARNING: Failed to copy $BRAVE_DESKTOP_FILE_USED" >> "$LOG_FILE"
+            BRAVE_FOUND=false
+        }
+        if [ "$BRAVE_FOUND" = true ]; then
+            echo "CREATED_DESKTOP: $BRAVE_DESKTOP_FILE_USED -> $USER_DIR/$BRAVE_DESKTOP_FILE_USED" >> "$LOG_FILE"
+            echo "Copied $BRAVE_DESKTOP_FILE_USED to $USER_DIR"
+        fi
     else
         echo "Skipping: $BRAVE_DESKTOP_FILE_USED already exists in $USER_DIR"
         echo "[$(date)] SKIPPED: $BRAVE_DESKTOP_FILE_USED already exists" >> "$LOG_FILE"
     fi
+fi
 
+if [ "$BRAVE_FOUND" = true ]; then
     if [ -f "$USER_DIR/$BRAVE_DESKTOP_FILE_USED" ]; then
         cp "$USER_DIR/$BRAVE_DESKTOP_FILE_USED" "$BACKUP_DIR/$BRAVE_DESKTOP_FILE_USED.$(date +%s)" || error_exit "Failed to backup $BRAVE_DESKTOP_FILE_USED."
         echo "BACKUP_DESKTOP: $BRAVE_DESKTOP_FILE_USED -> $BACKUP_DIR/$BRAVE_DESKTOP_FILE_USED.$(date +%s)" >> "$LOG_FILE"
@@ -142,9 +176,6 @@ if [ "$BRAVE_FOUND" = true ]; then
         grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE_USED"
         echo "[$(date)] MODIFIED_DESKTOP: Added extension to $BRAVE_DESKTOP_FILE_USED" >> "$LOG_FILE"
     fi
-else
-    echo "Skipping all Brave-related modifications due to no Brave installation detected."
-    echo "[$(date)] SKIPPED: All Brave-related modifications (Brave not installed)" >> "$LOG_FILE"
 fi
 
 if ! command -v flatpak >/dev/null 2>&1; then
