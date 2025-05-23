@@ -9,7 +9,7 @@ fi
 
 if [ ! -d "$HOME/.config/hyde/themes/Crimson Blue" ]; then
   echo "Importing Crimson Blue..."
-  hydectl theme import --name "Crimson Blue" --url https://github.com/amit-0i/Crimson-Blue
+  hydectl theme import --name "Crimson-Blue" --url https://github.com/amit-0i/Crimson-Blue
 else
   echo "Skipped Crimson Blue, already exists."
 fi
