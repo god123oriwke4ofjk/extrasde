@@ -53,7 +53,7 @@ extra_updated=0
 hyde_updated=0
 
 check_repo_updates "$HOME/Extra" "git pull" || extra_updated=1
-check_repo_updates "$HOME/Hyde" "git pull origin master" || hyde_updated=1
+check_repo_updates "$HOME/HyDE" "git pull origin master" || hyde_updated=1
 
 if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ]; then
     echo "Both repositories are up to date. Theres nothing to update."
@@ -70,20 +70,19 @@ if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
     mv $HOME/HyDE/Configs/.config/hypr/keybindings.conf $TEMP_FOLDER
 fi
 
-if [ $extra_updated -eq 0 ] then
+if [ $extra_updated -eq 1 ]; then
     echo "Updating hyde..."
     cd $HOME/HyDE/Scripts
     ./install.sh -r
 fi
 
-if [ cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; ] then
+if cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; then
     echo "Changed keybind.conf, remaking it"
     rm $HOME/.config/hypr/keybindings.conf 
     mv $TEMP_FOLDER/keybindings.conf $HOME/.config/hypr
     if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
-   #     cd $HOME/Extra
-         echo "TEST"
-  #      ./install.sh --keybind
+        cd $HOME/Extra
+        ./install.sh --keybind
     fi
 fi
 
