@@ -3,7 +3,6 @@
 USER=${USER:-$(whoami)}
 [ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
 
-# Directories
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
@@ -21,7 +20,6 @@ CONFIG_DIR="$SCRIPT_BASEDIR/config"
 KEYBINDS_SRC_DIR="$CONFIG_DIR/keybinds"
 SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 
-# Parse parameters
 BROWSER_ONLY=false
 KEYBIND_ONLY=false
 SUDOERS_ONLY=false
@@ -56,7 +54,6 @@ while [[ "$1" =~ ^- ]]; do
     esac
 done
 
-# If no parameters are provided, run all tasks unless specific flags are set
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     BROWSER_ONLY=true
     KEYBIND_ONLY=true
@@ -64,22 +61,16 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     KEYBOARD_ONLY=true
 fi
 
-# Create necessary directories (needed for browser, keybind, sudoers, or keyboard setup)
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
-# Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
 echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
 
-# Sudoers setup (executed if --sudoers is used or no parameters)
 if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
-    # Prompt for sudo password upfront
     echo "Configuring sudoers requires sudo privileges."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
-
-    # Configure sudoers for openvpn and killall
     if [ ! -f "$SUDOERS_FILE" ]; then
         echo "Configuring sudoers to allow NOPASSWD for openvpn and killall..."
         sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
@@ -117,9 +108,7 @@ EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
     fi
 fi
 
-# Keybind setup (executed if --keybind is used or no parameters)
 if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
-    # Configure keybindings
     if [ ! -f "$KEYBINDINGS_CONF" ]; then
         echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
         touch "$KEYBINDINGS_CONF" || { echo "Error: Failed to create $KEYBINDINGS_CONF"; exit 1; }
@@ -127,7 +116,6 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
 
     [ ! -w "$KEYBINDINGS_CONF" ] && { echo "Error: $KEYBINDINGS_CONF is not writable."; exit 1; }
 
-    # Backup keybindings.conf, removing any previous backups
     if [ -f "$KEYBINDINGS_CONF" ]; then
         find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete || { echo "Warning: Failed to delete previous keybindings.conf.bak"; }
         cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak" || { echo "Error: Failed to backup $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"; exit 1; }
@@ -135,92 +123,38 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
         echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
     fi
 
-    # Define keybinding lines
-    VPN_LINES="\
-\$d=[\$ut|Vpn Commands]
-bindd = \$mainMod Alt, V, \$d toggle vpn , exec, \$scrPath/vpn-toggle.sh # toggle vpn
-bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.sh change # change vpn server"
-    SCREEN_RECORDER_LINE="bindd = \$mainMod, R, \$d screen recorder , exec, flatpak run com.dec05eba.gpu_screen_recorder # launch screen recorder"
+    VPN_LINE="bindd = \$mainMod, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
 
-    # Check if all keybindings already exist
-    if grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null && \
-         grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: VPN, and screen recorder bindings already exist in $KEYBINDINGS_CONF"
+    if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
     else
         UTILITIES_START='$d=[$ut]'
-        SCREEN_CAPTURE_START='$d=[$ut|Screen Capture]'
         temp_file=$(mktemp)
 
-        # Update or add VPN bindings
-        if ! grep -F "$VPN_LINES" "$KEYBINDINGS_CONF" > /dev/null; then
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-                echo "Appending Utilities section to $KEYBINDINGS_CONF"
-                echo -e "\n$UTILITIES_START\n$VPN_LINES" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "DEBUG: Appended Utilities section with VPN bindings" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added and VPN bindings" >> "$LOG_FILE"
-            else
-                awk -v vpn_lines="$VPN_LINES" -v util_start="$UTILITIES_START" -v sc_start="$SCREEN_CAPTURE_START" '
-                    BEGIN { found_util=0; added=0 }
-                    $0 ~ util_start { found_util=1; print; next }
-                    found_util && !added { print; if (!index($0, vpn_lines)) { print vpn_lines } added=1; next }
-                    found_util && $0 ~ sc_start && !added { print vpn_lines "\n"; added=1; print; next }
-                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ && !added { print vpn_lines "\n"; added=1; print; next }
-                    found_util && /^$/ && !added { print vpn_lines "\n"; added=1; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added/updated VPN bindings to $KEYBINDINGS_CONF"
-                echo "DEBUG: Updated Utilities section with VPN bindings" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added/updated VPN bindings" >> "$LOG_FILE"
-            fi
-        fi
-
-        # Update or add screen recorder binding in Screen Capture section
-        if ! grep -Fx "$SCREEN_RECORDER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-                echo "Appending Utilities section with Screen Capture to $KEYBINDINGS_CONF"
-                echo -e "\n$UTILITIES_START\n$SCREEN_CAPTURE_START\n$SCREEN_RECORDER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added Utilities section with Screen Capture and screen recorder binding to $KEYBINDINGS_CONF"
-                echo "DEBUG: Appended Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added Utilities section with Screen Capture and screen recorder binding" >> "$LOG_FILE"
-            elif ! grep -q "$SCREEN_CAPTURE_START" "$KEYBINDINGS_CONF"; then
-                awk -v sc_start="$SCREEN_CAPTURE_START" -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v util_start="$UTILITIES_START" '
-                    BEGIN { found_util=0 }
-                    $0 ~ util_start { found_util=1; print; next }
-                    found_util && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; print; next }
-                    found_util && /^$/ { print sc_start "\n" screen_recorder_line "\n"; found_util=0; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-                echo "Added Screen Capture section with screen recorder binding to $KEYBINDINGS_CONF"
-                echo "DEBUG: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added Screen Capture section with screen recorder binding" >> "$LOG_FILE"
-            else
-                awk -v screen_recorder_line="$SCREEN_RECORDER_LINE" -v sc_start="$SCREEN_CAPTURE_START" '
-                    BEGIN { found_sc=0 }
-                    $0 ~ sc_start { found_sc=1; print; next }
-                    found_sc && /binddl = , Print, \$d print all monitors/ { print; print screen_recorder_line; found_sc=0; next }
-                    found_sc && !/^[[:space:]]*$/ && !/^\$/ && !/^bind/ { print screen_recorder_line "\n"; found_sc=0; print; next }
-                    found_sc && /^$/ { print screen_recorder_line "\n"; found_sc=0; next }
-                    { print }
-                ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
-                if ! mv "$temp_file" "$KEYBINDINGS_CONF"; then
-                    echo "Error: Failed to update $KEYBINDINGS_CONF"
-                    rm -f "$temp_file"
-                    exit 1
-                fi
-                echo "Added screen recorder binding to existing Screen Capture section in $KEYBINDINGS_CONF"
-                echo "DEBUG: Added screen recorder binding to existing Screen Capture section" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added screen recorder binding to Screen Capture section" >> "$LOG_FILE"
-            fi
+        if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
+            echo "Appending Utilities section to $KEYBINDINGS_CONF"
+            echo -e "\n$UTILITIES_START\n$VPN_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN binding" >> "$LOG_FILE"
         else
-            echo "Skipping: Screen recorder binding already exists in $KEYBINDINGS_CONF"
+            awk -v vpn_line="$VPN_LINE" -v util_start="$UTILITIES_START" '
+                BEGIN { found_util=0; added=0 }
+                $0 ~ util_start { found_util=1; print; next }
+                found_util && !added && /^[[:space:]]*$/ { print vpn_line "\n"; added=1; print; next }
+                found_util && !added && /^\$d=/ { print vpn_line "\n"; added=1; print; next }
+                found_util && !added && !/^[[:space:]]*$/ && !/^bind/ { print vpn_line "\n"; added=1; print; next }
+                { print }
+                END { if (found_util && !added) print vpn_line }
+            ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Added VPN binding to Utilities section in $KEYBINDINGS_CONF"
+            echo "DEBUG: Added VPN binding to Utilities section" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
         fi
     fi
 
-    # Install keybind-related scripts (e.g., vpn-toggle.sh)
     declare -A keybind_scripts
-    keybind_scripts["vpn-toggle.sh"]="$CONFIG_DIR/vpn-toggle.sh"
+    keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
     for script_name in "${!keybind_scripts[@]}"; do
         src_script="${keybind_scripts[$script_name]}"
         script_path="$SCRIPT_DIR/$script_name"
@@ -260,9 +194,7 @@ bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.s
     done
 fi
 
-# Browser setup (executed if --browser is used or no parameters)
 if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
-    # Install dynamic-browser.sh (skipped if --browser nodynamic)
     if [ "$NO_DYNAMIC" = false ]; then
         declare -A scripts
         scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
@@ -304,7 +236,6 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
             ls -l "$script_path"
         done
 
-        # Configure dynamic-browser.sh in userprefs.conf
         if [ -f "$USERPREFS_CONF" ]; then
             current_timestamp=$(date +%s)
             cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
@@ -322,7 +253,6 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
         echo "Skipping dynamic-browser.sh installation and configuration (--browser nodynamic)"
     fi
 
-    # Configure Firefox autoscrolling
     if command -v firefox >/dev/null 2>&1; then
         if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
             echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
@@ -360,7 +290,6 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
         echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
     fi
 
-    # Configure Zen Browser autoscrolling
     if command -v zen >/dev/null 2>&1 || [ -x "/opt/zen-browser-bin/zen-bin" ]; then
         if [ ! -d "$ZEN_PROFILE_DIR" ] || [ ! -f "$ZEN_PROFILE_INI" ]; then
             echo "Zen Browser profile directory or profiles.ini not found. Creating a new profile..."
@@ -399,9 +328,7 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 fi
 
-# Keyboard layout setup (executed if --kb is used or no parameters)
 if [ "$KEYBOARD_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; }; then
-    # Configure userprefs.conf for kb_layout
     if [ ! -f "$USERPREFS_CONF" ]; then
         echo "Warning: $USERPREFS_CONF does not exist. Creating with input block."
         cat << 'EOF' > "$USERPREFS_CONF"
@@ -435,21 +362,13 @@ EOF
     fi
 fi
 
-# Non-browser, non-keybind, non-sudoers, non-keyboard setup (executed only if no parameters)
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
-    # Prompt for sudo password upfront
     echo "This script requires sudo privileges to install dependencies and configure additional settings."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
-
-    # Validate system requirements
     command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
     ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
-
-    # Create additional directories
     mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
     mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
-
-    # Delete backups from the previous run
     current_timestamp=$(date +%s)
     if [ -d "$BACKUP_DIR" ]; then
         prev_backup=$(ls -t "$BACKUP_DIR/backup_session_"* 2>/dev/null | head -n2 | tail -n1)
@@ -463,8 +382,6 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
             echo "No previous backup session found. Skipping cleanup."
         fi
     fi
-
-    # Install jq if not present
     if ! pacman -Qs jq >/dev/null 2>&1; then
         sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
         echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
@@ -472,8 +389,6 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     else
         echo "Skipping: jq already installed"
     fi
-
-    # Move .svg files from icons/ directory
     moved_files=0
     replace_files=()
     if [ -d "$ICONS_SRC_DIR" ]; then
@@ -500,7 +415,6 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     else
         echo "Warning: Icons directory $ICONS_SRC_DIR not found. Skipping .svg file installation."
     fi
-
     if [ ${#replace_files[@]} -gt 0 ]; then
         echo "The following files have the same name but different content in $ICON_DIR:"
         for file in "${replace_files[@]}"; do
@@ -520,10 +434,9 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
             echo "Skipping replacement of non-identical files."
         fi
     fi
-    [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] &&  echo "No new or replaced .svg files were moved."
+    [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were moved."
 fi
 
-# Create backup session marker (only if not in keybind-only, browser-only, sudoers-only, or keyboard-only mode)
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     current_timestamp=$(date +%s)
     touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
