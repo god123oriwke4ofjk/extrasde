@@ -36,15 +36,18 @@ mkdir -p "$BACKUP_DIR" || error_exit "Failed to create $BACKUP_DIR directory."
 touch "$LOG_FILE" || error_exit "Failed to create $LOG_FILE."
 echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
 
+# Install ttf-alef using yay
 if ! fc-list | grep -qi "Alef"; then
     echo "Warning: Alef font not found. Attempting to install..."
     echo "[$(date)] WARNING: Alef font not found, attempting installation" >> "$LOG_FILE"
-    if sudo pacman -S --noconfirm ttf-alef >/dev/null 2>&1; then
-        echo "Successfully installed Alef font."
-        echo "[$(date)] INSTALLED_FONT: ttf-alef" >> "$LOG_FILE"
+    if command -v yay >/dev/null 2>&1; then
+        yay -S --noconfirm ttf-alef >/dev/null 2>&1 || {
+            echo "Warning: Failed to install ttf-alef via yay. Custom font may not apply."
+            echo "[$(date)] WARNING: Failed to install ttf-alef" >> "$LOG_FILE"
+        }
     else
-        echo "Warning: Failed to install ttf-alef. Custom font may not apply."
-        echo "[$(date)] WARNING: Failed to install ttf-alef" >> "$LOG_FILE"
+        echo "Warning: yay not found. Please install yay to install ttf-alef."
+        echo "[$(date)] WARNING: yay not found for ttf-alef installation" >> "$LOG_FILE"
     fi
 else
     echo "Alef font is already installed."
@@ -58,8 +61,9 @@ if [ -f "$SYSTEM_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]; then
     BRAVE_SOURCE_DIR="$SYSTEM_BRAVE_SOURCE_DIR"
     BRAVE_FOUND=true
     echo "[$(date)] DETECTED: Brave installed via system package" >> "$LOG_FILE"
-elif [ -f "$FLATPAK_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]; then
+elif [ -f "$FLATPAK_BRAVE_SOURCE_DIR/com.brave.Browser.desktop" ] || flatpak list | grep -q com.brave.Browser; then
     BRAVE_SOURCE_DIR="$FLATPAK_BRAVE_SOURCE_DIR"
+    BRAVE_DESKTOP_FILE="com.brave.Browser.desktop"  # Use Flatpak desktop file name
     BRAVE_FOUND=true
     echo "[$(date)] DETECTED: Brave installed via Flatpak" >> "$LOG_FILE"
 else
@@ -157,7 +161,13 @@ else
     echo "[$(date)] SKIPPED: Vesktop already installed" >> "$LOG_FILE"
 fi
 
-[ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ] && error_exit "$VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR."
+# Correct Vesktop desktop file source directory
+VESKTOP_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
+if [ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ]; then
+    echo "Error: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR."
+    echo "[$(date)] ERROR: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR" >> "$LOG_FILE"
+    exit 1
+fi
 
 if [ ! -f "$USER_DIR/$VESKTOP_DESKTOP_FILE" ]; then
     cp "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" "$USER_DIR/$VESKTOP_DESKTOP_FILE" || error_exit "Failed to copy $VESKTOP_DESKTOP_FILE to $USER_DIR."
