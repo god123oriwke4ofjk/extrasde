@@ -16,9 +16,9 @@ LOG_FILE="$HOME/.local/lib/hyde/install.log"
 BACKUP_DIR="$HOME/.local/lib/hyde/backups"
 BRAVE_DESKTOP_FILE="brave-browser.desktop"
 VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
-BRAVE_SOURCE_DIR="/usr/share/applications"
+SYSTEM_BRAVE_SOURCE_DIR="/usr/share/applications"
+FLATPAK_BRAVE_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
 USER_DIR="$XDG_DATA_HOME/applications"
-VESKTOP_SOURCE_DIR="$XDG_DATA_HOME/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
 EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
@@ -51,64 +51,83 @@ else
     echo "[$(date)] SKIPPED: Alef font already installed" >> "$LOG_FILE"
 fi
 
-[ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && error_exit "$BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR."
-
-mkdir -p "$USER_DIR" || error_exit "Failed to create $USER_DIR directory."
-if [ ! -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
-    cp "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to copy $BRAVE_DESKTOP_FILE to $USER_DIR."
-    echo "CREATED_DESKTOP: $BRAVE_DESKTOP_FILE -> $USER_DIR/$BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
-    echo "Copied $BRAVE_DESKTOP_FILE to $USER_DIR"
+# Check for Brave installation (system or Flatpak)
+BRAVE_SOURCE_DIR=""
+BRAVE_FOUND=false
+if [ -f "$SYSTEM_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]; then
+    BRAVE_SOURCE_DIR="$SYSTEM_BRAVE_SOURCE_DIR"
+    BRAVE_FOUND=true
+    echo "[$(date)] DETECTED: Brave installed via system package" >> "$LOG_FILE"
+elif [ -f "$FLATPAK_BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ]; then
+    BRAVE_SOURCE_DIR="$FLATPAK_BRAVE_SOURCE_DIR"
+    BRAVE_FOUND=true
+    echo "[$(date)] DETECTED: Brave installed via Flatpak" >> "$LOG_FILE"
 else
-    echo "Skipping: $BRAVE_DESKTOP_FILE already exists in $USER_DIR"
-    echo "[$(date)] SKIPPED: $BRAVE_DESKTOP_FILE already exists" >> "$LOG_FILE"
+    echo "Warning: Brave browser not found in system or Flatpak. Skipping Brave-related modifications."
+    echo "[$(date)] WARNING: Brave not found, skipping Brave modifications" >> "$LOG_FILE"
 fi
 
-if [ -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
-    cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" || error_exit "Failed to backup $BRAVE_DESKTOP_FILE."
-    echo "BACKUP_DESKTOP: $BRAVE_DESKTOP_FILE -> $BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" >> "$LOG_FILE"
-    echo "Created backup of $BRAVE_DESKTOP_FILE"
-    ls -t "$BACKUP_DIR/$BRAVE_DESKTOP_FILE".* 2>/dev/null | tail -n +6 | xargs -I {} rm -f "{}"
-fi
+if [ "$BRAVE_FOUND" = true ]; then
+    mkdir -p "$USER_DIR" || error_exit "Failed to create $USER_DIR directory."
+    if [ ! -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
+        cp "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to copy $BRAVE_DESKTOP_FILE to $USER_DIR."
+        echo "CREATED_DESKTOP: $BRAVE_DESKTOP_FILE -> $USER_DIR/$BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+        echo "Copied $BRAVE_DESKTOP_FILE to $USER_DIR"
+    else
+        echo "Skipping: $BRAVE_DESKTOP_FILE already exists in $USER_DIR"
+        echo "[$(date)] SKIPPED: $BRAVE_DESKTOP_FILE already exists" >> "$LOG_FILE"
+    fi
 
-if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to remove --load-extension flag from $BRAVE_DESKTOP_FILE."
-    echo "Removed invalid --load-extension flag from $BRAVE_DESKTOP_FILE"
-    echo "[$(date)] CLEANUP: Removed --load-extension from $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
-fi
-if [[ -d "$EXTENSION_DIR" ]]; then
-    rm -rf "$EXTENSION_DIR" || error_exit "Failed to remove invalid extension directory $EXTENSION_DIR."
-    echo "Removed invalid extension directory $EXTENSION_DIR"
-    echo "[$(date)] CLEANUP: Removed $EXTENSION_DIR" >> "$LOG_FILE"
-fi
+    if [ -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
+        cp "$USER_DIR/$BRAVE_DESKTOP_FILE" "$BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" || error_exit "Failed to backup $BRAVE_DESKTOP_FILE."
+        echo "BACKUP_DESKTOP: $BRAVE_DESKTOP_FILE -> $BACKUP_DIR/$BRAVE_DESKTOP_FILE.$(date +%s)" >> "$LOG_FILE"
+        echo "Created backup of $BRAVE_DESKTOP_FILE"
+        ls -t "$BACKUP_DIR/$BRAVE_DESKTOP_FILE".* 2>/dev/null | tail -n +6 | xargs -I {} rm -f "{}"
+    fi
 
-if grep -q -- "$ARGUMENT" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    echo "The $ARGUMENT is already present in the Exec line for Brave"
-    echo "[$(date)] SKIPPED: $ARGUMENT already in $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+        sed -i "s| --load-extension=$EXTENSION_DIR||" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to remove --load-extension flag from $BRAVE_DESKTOP_FILE."
+        echo "Removed invalid --load-extension flag from $BRAVE_DESKTOP_FILE"
+        echo "[$(date)] CLEANUP: Removed --load-extension from $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    fi
+    if [[ -d "$EXTENSION_DIR" ]]; then
+        rm -rf "$EXTENSION_DIR" || error_exit "Failed to remove invalid extension directory $EXTENSION_DIR."
+        echo "Removed invalid extension directory $EXTENSION_DIR"
+        echo "[$(date)] CLEANUP: Removed $EXTENSION_DIR" >> "$LOG_FILE"
+    fi
+
+    if grep -q -- "$ARGUMENT" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+        echo "The $ARGUMENT is already present in the Exec line for Brave"
+        echo "[$(date)] SKIPPED: $ARGUMENT already in $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    else
+        sed -i "/^Exec=/ s|$| $ARGUMENT|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to modify Exec line in $BRAVE_DESKTOP_FILE."
+        echo "Successfully added $ARGUMENT to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+        echo "New Exec line:"
+        grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+        echo "[$(date)] MODIFIED_DESKTOP: Added $ARGUMENT to $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    fi
+
+    mkdir -p "$EXTENSION_DIR" || error_exit "Failed to create $EXTENSION_DIR."
+    wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL" 2>&1 | tee -a "$LOG_FILE"
+    [ $? -ne 0 ] && error_exit "Failed to download extension from $EXTENSION_URL."
+    unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR" 2>&1 | tee -a "$LOG_FILE"
+    [ $? -ne 0 ] && error_exit "Failed to unzip extension to $EXTENSION_DIR."
+    [ ! -f "$EXTENSION_DIR/manifest.json" ] && error_exit "Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)."
+    rm -f /tmp/netflix-1080p.crx || echo "Warning: Failed to remove temporary file /tmp/netflix-1080p.crx"
+
+    if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
+        echo "The extension is already loaded in the Exec line for Brave"
+        echo "[$(date)] SKIPPED: Extension already in $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    else
+        sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to add extension to $BRAVE_DESKTOP_FILE."
+        echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
+        echo "New Exec line:"
+        grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
+        echo "[$(date)] MODIFIED_DESKTOP: Added extension to $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    fi
 else
-    sed -i "/^Exec=/ s|$| $ARGUMENT|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to modify Exec line in $BRAVE_DESKTOP_FILE."
-    echo "Successfully added $ARGUMENT to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
-    echo "New Exec line:"
-    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
-    echo "[$(date)] MODIFIED_DESKTOP: Added $ARGUMENT to $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
-fi
-
-mkdir -p "$EXTENSION_DIR" || error_exit "Failed to create $EXTENSION_DIR."
-wget --no-config -O /tmp/netflix-1080p.crx "$EXTENSION_URL" 2>&1 | tee -a "$LOG_FILE"
-[ $? -ne 0 ] && error_exit "Failed to download extension from $EXTENSION_URL."
-unzip -o /tmp/netflix-1080p.crx -d "$EXTENSION_DIR" 2>&1 | tee -a "$LOG_FILE"
-[ $? -ne 0 ] && error_exit "Failed to unzip extension to $EXTENSION_DIR."
-[ ! -f "$EXTENSION_DIR/manifest.json" ] && error_exit "Failed to unpack extension to $EXTENSION_DIR (manifest.json missing)."
-rm -f /tmp/netflix-1080p.crx || echo "Warning: Failed to remove temporary file /tmp/netflix-1080p.crx"
-
-if grep -q -- "--load-extension=$EXTENSION_DIR" "$USER_DIR/$BRAVE_DESKTOP_FILE"; then
-    echo "The extension is already loaded in the Exec line for Brave"
-    echo "[$(date)] SKIPPED: Extension already in $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
-else
-    sed -i "/^Exec=/ s|$| --load-extension=$EXTENSION_DIR|" "$USER_DIR/$BRAVE_DESKTOP_FILE" || error_exit "Failed to add extension to $BRAVE_DESKTOP_FILE."
-    echo "Successfully added extension to the Exec line in $USER_DIR/$BRAVE_DESKTOP_FILE"
-    echo "New Exec line:"
-    grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
-    echo "[$(date)] MODIFIED_DESKTOP: Added extension to $BRAVE_DESKTOP_FILE" >> "$LOG_FILE"
+    echo "Skipping all Brave-related modifications due to no Brave installation detected."
+    echo "[$(date)] SKIPPED: All Brave-related modifications (Brave not installed)" >> "$LOG_FILE"
 fi
 
 if ! command -v flatpak >/dev/null 2>&1; then
