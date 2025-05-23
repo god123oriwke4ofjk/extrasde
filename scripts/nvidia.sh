@@ -3,21 +3,33 @@
 set -e
 
 usage() {
-    echo "Usage: $0 [-nv] [-h | -help]"
+    echo "Usage: $0 [-nv] [-dkms] [-hypr] [-h | -help]"
     echo "Options:"
     echo "  -nv        Skip Nouveau driver checks and blacklisting"
+    echo "  -dkms      Skip nvidia-dkms checks and uninstallation"
+    echo "  -hypr      Skip Hyprland configuration for NVIDIA"
     echo "  -h, -help  Display this help message and exit"
     echo ""
     echo "This script installs and configures the NVIDIA proprietary driver, blacklists Nouveau (unless -nv is used),"
-    echo "and configures Hyprland for NVIDIA. Must be run as root."
+    echo "and configures Hyprland for NVIDIA (unless -hypr is used). Must be run as root."
     exit 0
 }
 
 SKIP_NOUVEAU=false
+SKIP_DKMS=false
+SKIP_HYPRLAND=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -nv)
             SKIP_NOUVEAU=true
+            shift
+            ;;
+        -dkms)
+            SKIP_DKMS=true
+            shift
+            ;;
+        -hypr)
+            SKIP_HYPRLAND=true
             shift
             ;;
         -h|-help)
@@ -100,6 +112,11 @@ EOL
 }
 
 manage_dkms() {
+    if [[ "$SKIP_DKMS" == true ]]; then
+        echo "Skipping nvidia-dkms checks and uninstallation due to -dkms option."
+        return 0
+    fi
+
     if pacman -Qs nvidia-dkms > /dev/null; then
         echo "nvidia-dkms is installed. Uninstalling..."
         pacman -Rns --noconfirm nvidia-dkms
@@ -110,6 +127,11 @@ manage_dkms() {
 }
 
 configure_hyprland() {
+    if [[ "$SKIP_HYPRLAND" == true ]]; then
+        echo "Skipping Hyprland configuration due to -hypr option."
+        return 0
+    fi
+
     echo "Configuring Hyprland for NVIDIA..."
 
     local config_file="/home/$SUDO_USER/.config/hypr/hyprland.conf"
