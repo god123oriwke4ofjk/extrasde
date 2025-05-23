@@ -67,17 +67,24 @@ fi
 
 if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
     echo "Found modifed keybinds file, setting it up for update."
-    mv "$BACKUP_DIR/keybindings.conf.bak" ~/.config/hypr/keybindings.conf
+    mv $HOME/HyDE/Configs/.config/hypr/keybindings.conf $TEMP_FOLDER
 fi
 
 if [ $extra_updated -eq 0 ] then
+    echo "Updating hyde..."
     cd $HOME/HyDE/Scripts
     ./install.sh -r
 fi
 
-if [ $hyde_updated -eq 0 ] then
-    cd $HOME/Extra
-    ./install.sh
+if [ cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; ] then
+    echo "Changed keybind.conf, remaking it"
+    rm $HOME/.config/hypr/keybindings.conf 
+    mv $TEMP_FOLDER/keybindings.conf $HOME/.config/hypr
+    if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
+   #     cd $HOME/Extra
+         echo "TEST"
+  #      ./install.sh --keybind
+    fi
 fi
 
 rm -rf $TEMP_FOLDER
