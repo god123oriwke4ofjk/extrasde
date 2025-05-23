@@ -3,21 +3,28 @@
 set -e
 
 usage() {
-    echo "Usage: $0 [-nv] [-dkms] [-hypr] [-h | -help]"
+    echo "Usage: $0 [-nv] [-dkms] [-hypr] [-undo [hypr] [dkms] [nv]] [-h | -help]"
     echo "Options:"
     echo "  -nv        Skip Nouveau driver checks and blacklisting"
     echo "  -dkms      Skip nvidia-dkms checks and uninstallation"
     echo "  -hypr      Skip Hyprland configuration for NVIDIA"
+    echo "  -undo      Undo all changes made by this script (Nouveau, DKMS, Hyprland, DRM)"
+    echo "  -undo hypr Undo only Hyprland configuration"
+    echo "  -undo dkms Undo only nvidia-dkms uninstallation"
+    echo "  -undo nv   Undo only Nouveau blacklisting and NVIDIA DRM settings"
     echo "  -h, -help  Display this help message and exit"
     echo ""
     echo "This script installs and configures the NVIDIA proprietary driver, blacklists Nouveau (unless -nv is used),"
-    echo "and configures Hyprland for NVIDIA (unless -hypr is used). Must be run as root."
+    echo "and configures Hyprland for NVIDIA (unless -hypr is used). Use -undo to revert changes. Must be run as root."
     exit 0
 }
 
 SKIP_NOUVEAU=false
 SKIP_DKMS=false
 SKIP_HYPRLAND=false
+UNDO_MODE=false
+UNDO_ACTIONS=("nouveau" "dkms" "hyprland" "drm") 
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -nv)
@@ -31,6 +38,34 @@ while [[ $# -gt 0 ]]; do
         -hypr)
             SKIP_HYPRLAND=true
             shift
+            ;;
+        -undo)
+            UNDO_MODE=true
+            UNDO_ACTIONS=() 
+            shift
+            while [[ $# -gt 0 && "$1" != -* ]]; do
+                case "$1" in
+                    hypr)
+                        UNDO_ACTIONS+=("hyprland")
+                        shift
+                        ;;
+                    dkms)
+                        UNDO_ACTIONS+=("dkms")
+                        shift
+                        ;;
+                    nv)
+                        UNDO_ACTIONS+=("nouveau" "drm")
+                        shift
+                        ;;
+                    *)
+                        echo "Error: Unknown undo option: $1"
+                        usage
+                        ;;
+                esac
+            done
+            if [[ ${#UNDO_ACTIONS[@]} -eq 0 ]]; then
+                UNDO_ACTIONS=("nouveau" "dkms" "hyprland" "drm")
+            fi
             ;;
         -h|-help)
             usage
@@ -93,7 +128,6 @@ install_nvidia() {
     echo "Installing NVIDIA proprietary driver..."
 
     pacman -Syu --noconfirm
-
     pacman -S --noconfirm nvidia nvidia-utils libva-nvidia-driver
 
     if [[ "$SKIP_NOUVEAU" == false ]]; then
@@ -172,7 +206,117 @@ configure_hyprland() {
     echo "Hyprland configuration completed."
 }
 
+undo_nouveau() {
+    local blacklist_file="/etc/modprobe.d/blacklist-nouveau.conf"
+    if [[ -f "$blacklist_file" ]]; then
+        echo "Removing Nouveau blacklist file: $blacklist_file..."
+        rm -f "$blacklist_file"
+        if [[ $? -eq 0 ]]; then
+            echo "Nouveau blacklist removed successfully."
+        else
+            echo "Error: Failed to remove $blacklist_file."
+            exit 1
+        fi
+    else
+        echo "No Nouveau blacklist file found. Skipping."
+    fi
+}
+
+undo_nvidia_drm() {
+    local nvidia_conf="/etc/modprobe.d/nvidia.conf"
+    if [[ -f "$nvidia_conf" ]]; then
+        echo "Removing NVIDIA DRM configuration from $nvidia_conf..."
+        sed -i '/nvidia-drm modeset=1/d' "$nvidia_conf"
+        if [[ ! -s "$nvidia_conf" ]]; then
+            echo "NVIDIA DRM config file is empty. Removing $nvidia_conf..."
+            rm -f "$nvidia_conf"
+        fi
+        echo "Updating initramfs after removing NVIDIA DRM settings..."
+        mkinitcpio -P
+    else
+        echo "No NVIDIA DRM configuration found. Skipping."
+    fi
+}
+
+undo_dkms() {
+    if ! pacman -Qs nvidia-dkms > /dev/null; then
+        echo "Reinstalling nvidia-dkms..."
+        pacman -S --noconfirm nvidia-dkms
+        if [[ $? -eq 0 ]]; then
+            echo "nvidia-dkms reinstalled successfully."
+        else
+            echo "Error: Failed to reinstall nvidia-dkms."
+            exit 1
+        fi
+    else
+        echo "nvidia-dkms is already installed. No action needed."
+    fi
+}
+
+undo_hyprland() {
+    local config_file="/home/$SUDO_USER/.config/hypr/hyprland.conf"
+    local line_to_remove="env = ELECTRON_OZONE_PLATFORM_HINT,auto"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "Hyprland config file $config_file does not exist. Skipping."
+        return 0
+    fi
+
+    if grep -Fx "$line_to_remove" "$config_file" > /dev/null; then
+        echo "Removing line '$line_to_remove' from $config_file..."
+        sed -i "/^${line_to_remove}$/d" "$config_file"
+        if [[ $? -eq 0 ]]; then
+            echo "Line removed successfully."
+        else
+            echo "Error: Failed to remove line from $config_file."
+            exit 1
+        fi
+    else
+        echo "Line '$line_to_remove' not found in $config_file. No changes made."
+    fi
+
+    if [[ ! -s "$config_file" ]]; then
+        echo "Hyprland config file is empty. Removing $config_file..."
+        rm -f "$config_file"
+    fi
+
+    if [[ -d "$(dirname "$config_file")" && -z "$(ls -A "$(dirname "$config_file")")" ]]; then
+        echo "Hyprland config directory is empty. Removing $(dirname "$config_file")..."
+        rmdir "$(dirname "$config_file")"
+    fi
+
+    echo "Hyprland configuration undo completed."
+}
+
+perform_undo() {
+    echo "Performing undo actions: ${UNDO_ACTIONS[*]}..."
+
+    for action in "${UNDO_ACTIONS[@]}"; do
+        case "$action" in
+            nouveau)
+                undo_nouveau
+                ;;
+            drm)
+                undo_nvidia_drm
+                ;;
+            dkms)
+                undo_dkms
+                ;;
+            hyprland)
+                undo_hyprland
+                ;;
+        esac
+    done
+
+    echo "Undo completed. Please reboot your system to apply changes."
+    exit 0
+}
+
 echo "Starting NVIDIA driver check and installation script..."
+
+if [[ "$UNDO_MODE" == true ]]; then
+    perform_undo
+fi
 
 manage_dkms
 
