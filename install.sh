@@ -25,6 +25,7 @@ SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 BROWSER_ONLY=false
 KEYBIND_ONLY=false
 SUDOERS_ONLY=false
+KEYBOARD_ONLY=false
 NO_DYNAMIC=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
@@ -44,6 +45,10 @@ while [[ "$1" =~ ^- ]]; do
             SUDOERS_ONLY=true
             shift
             ;;
+        --kb)
+            KEYBOARD_ONLY=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -52,23 +57,24 @@ while [[ "$1" =~ ^- ]]; do
 done
 
 # If no parameters are provided, run all tasks unless specific flags are set
-if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     BROWSER_ONLY=true
     KEYBIND_ONLY=true
     SUDOERS_ONLY=true
+    KEYBOARD_ONLY=true
 fi
 
-# Create necessary directories (needed for browser, keybind, or sudoers setup)
+# Create necessary directories (needed for browser, keybind, sudoers, or keyboard setup)
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 # Initialize log file
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
 
 # Sudoers setup (executed if --sudoers is used or no parameters)
-if [ "$SUDOERS_ONLY" = true ] || [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ]; then
+if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     # Prompt for sudo password upfront
     echo "Configuring sudoers requires sudo privileges."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
@@ -112,7 +118,7 @@ EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
 fi
 
 # Keybind setup (executed if --keybind is used or no parameters)
-if [ "$KEYBIND_ONLY" = true ] || [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     # Configure keybindings
     if [ ! -f "$KEYBINDINGS_CONF" ]; then
         echo "Error: $KEYBINDINGS_CONF does not exist. Creating an empty file."
@@ -254,8 +260,8 @@ bindd = \$mainMod Alt, C, \$d change vpn location , exec, \$scrPath/vpn-toggle.s
     done
 fi
 
-# Browser setup (executed if --browser or --browser nodynamic is used or no parameters)
-if [ "$BROWSER_ONLY" = true ] && [ "$SUDOERS_ONLY" = false ] || [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+# Browser setup (executed if --browser is used or no parameters)
+if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     # Install dynamic-browser.sh (skipped if --browser nodynamic)
     if [ "$NO_DYNAMIC" = false ]; then
         declare -A scripts
@@ -393,8 +399,44 @@ if [ "$BROWSER_ONLY" = true ] && [ "$SUDOERS_ONLY" = false ] || [ "$KEYBIND_ONLY
     fi
 fi
 
-# Non-browser, non-keybind, non-sudoers setup (executed only if no parameters or combined with --sudoers)
-if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+# Keyboard layout setup (executed if --kb is used or no parameters)
+if [ "$KEYBOARD_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; }; then
+    # Configure userprefs.conf for kb_layout
+    if [ ! -f "$USERPREFS_CONF" ]; then
+        echo "Warning: $USERPREFS_CONF does not exist. Creating with input block."
+        cat << 'EOF' > "$USERPREFS_CONF"
+input {
+    kb_layout = us,il
+}
+EOF
+        echo "CREATED_CONFIG: $USERPREFS_CONF" >> "$LOG_FILE"
+        echo "Created $USERPREFS_CONF with kb_layout = us,il"
+    else
+        [ ! -w "$USERPREFS_CONF" ] && { echo "Error: $USERPREFS_CONF is not writable."; exit 1; }
+        if awk '/^[[:space:]]*input[[:space:]]*{/,/^[[:space:]]*}/ {if ($0 ~ /^[[:space:]]*kb_layout[[:space:]]*=[[:space:]]*us,il/) found=1} END {exit !found}' "$USERPREFS_CONF"; then
+            echo "Skipping: 'kb_layout = us,il' already set in input block of $USERPREFS_CONF"
+        else
+            temp_file=$(mktemp)
+            cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+            if grep -q '^[[:space:]]*input[[:space:]]*{.*}' "$USERPREFS_CONF"; then
+                awk '/^[[:space:]]*input[[:space:]]*{/ {print; print "    kb_layout = us,il"; next} 1' "$USERPREFS_CONF" > "$temp_file" || { echo "Error: Failed to modify $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+            else
+                cat << 'EOF' >> "$temp_file"
+input {
+    kb_layout = us,il
+}
+EOF
+                cat "$USERPREFS_CONF" >> "$temp_file"
+            fi
+            mv "$temp_file" "$USERPREFS_CONF" || { echo "Error: Failed to update $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "Modified $USERPREFS_CONF to set 'kb_layout = us,il' in input block"
+            echo "MODIFIED_USERPREFS: Set kb_layout = us,il in input block" >> "$LOG_FILE"
+        fi
+    fi
+fi
+
+# Non-browser, non-keybind, non-sudoers, non-keyboard setup (executed only if no parameters)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     # Prompt for sudo password upfront
     echo "This script requires sudo privileges to install dependencies and configure additional settings."
     sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
@@ -479,43 +521,10 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         fi
     fi
     [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] &&  echo "No new or replaced .svg files were moved."
-
-    # Configure userprefs.conf for kb_layout
-    if [ ! -f "$USERPREFS_CONF" ]; then
-        echo "Warning: $USERPREFS_CONF does not exist. Creating with input block."
-        cat << 'EOF' > "$USERPREFS_CONF"
-input {
-    kb_layout = us,il
-}
-EOF
-        echo "CREATED_CONFIG: $USERPREFS_CONF" >> "$LOG_FILE"
-        echo "Created $USERPREFS_CONF with kb_layout = us,il"
-    else
-        [ ! -w "$USERPREFS_CONF" ] && { echo "Error: $USERPREFS_CONF is not writable."; exit 1; }
-        if awk '/^[[:space:]]*input[[:space:]]*{/,/^[[:space:]]*}/ {if ($0 ~ /^[[:space:]]*kb_layout[[:space:]]*=[[:space:]]*us,il/) found=1} END {exit !found}' "$USERPREFS_CONF"; then
-            echo "Skipping: 'kb_layout = us,il' already set in input block of $USERPREFS_CONF"
-        else
-            temp_file=$(mktemp)
-            cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
-            if grep -q '^[[:space:]]*input[[:space:]]*{.*}' "$USERPREFS_CONF"; then
-                awk '/^[[:space:]]*input[[:space:]]*{/ {print; print "    kb_layout = us,il"; next} 1' "$USERPREFS_CONF" > "$temp_file" || { echo "Error: Failed to modify $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
-            else
-                cat << 'EOF' >> "$temp_file"
-input {
-    kb_layout = us,il
-}
-EOF
-                cat "$USERPREFS_CONF" >> "$temp_file"
-            fi
-            mv "$temp_file" "$USERPREFS_CONF" || { echo "Error: Failed to update $USERPREFS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "Modified $USERPREFS_CONF to set 'kb_layout = us,il' in input block"
-            echo "MODIFIED_USERPREFS: Set kb_layout = us,il in input block" >> "$LOG_FILE"
-        fi
-    fi
 fi
 
-# Create backup session marker (only if not in keybind-only, browser-only, or sudoers-only mode)
-if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; then
+# Create backup session marker (only if not in keybind-only, browser-only, sudoers-only, or keyboard-only mode)
+if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     current_timestamp=$(date +%s)
     touch "$BACKUP_DIR/backup_session_$current_timestamp" || { echo "Error: Failed to create backup session marker"; exit 1; }
     echo "Created backup session marker for run at $current_timestamp"
