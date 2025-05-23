@@ -18,7 +18,7 @@ check_repo_updates() {
     if [ ! -d "$repo_dir" ]; then
         echo "Error: Directory $repo_dir does not exist."
         return 1
-    }
+    fi
 
     cd "$repo_dir" || {
         echo "Error: Could not navigate to $repo_dir."
@@ -28,7 +28,7 @@ check_repo_updates() {
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         echo "Error: $repo_dir is not a valid Git repository."
         return 1
-    }
+    fi
 
     git fetch origin
 
