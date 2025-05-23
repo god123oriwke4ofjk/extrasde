@@ -28,11 +28,13 @@ VESKTOP_PLUGINS_TO_ENABLE=(
 INSTALL_OSU=false
 INSTALL_LTS=false
 NETFLIX=false
+NOCLIP=false
 for arg in "$@"; do
     case "$arg" in
         osu) INSTALL_OSU=true ;;
         lts) INSTALL_LTS=true ;;
         -netflix) NETFLIX=true ;;
+        --noclip) NOCLIP=true ;;
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
 done
@@ -46,7 +48,7 @@ ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP)" >> "$LOG_FILE"
 
 sudo pacman -Syy --noconfirm
 
@@ -255,7 +257,12 @@ else
     echo "Skipping: flathub repository already added"
 fi
 
-for pkg in com.dec05eba.gpu_screen_recorder dev.vencord.Vesktop org.vinegarhq.Sober; do
+FLATPAK_PACKAGES=("dev.vencord.Vesktop" "org.vinegarhq.Sober")
+if [ "$NOCLIP" = false ]; then
+    FLATPAK_PACKAGES+=("com.dec05eba.gpu_screen_recorder")
+fi
+
+for pkg in "${FLATPAK_PACKAGES[@]}"; do
     if ! flatpak list | grep -q "$pkg"; then
         if [ "$pkg" = "com.dec05eba.gpu_screen_recorder" ]; then
             flatpak install --system -y com.dec05eba.gpu_screen_recorder || { echo "Error: Failed to install GPU SCREEN RECORDER"; exit 1; }
@@ -269,7 +276,7 @@ for pkg in com.dec05eba.gpu_screen_recorder dev.vencord.Vesktop org.vinegarhq.So
     fi
 done
 
-if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
+if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     sudo ydotool &
     echo "Generating gpu-screen-recorder config files"
     flatpak run com.dec05eba.gpu_screen_recorder &
@@ -286,8 +293,8 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     else
         echo "Window not found."
     fi
-else
-    echo "WARNING Cannot locate gpu-screen-recorder"
+elif [ "$NOCLIP" = true ]; then
+    echo "Skipping: gpu-screen-recorder setup (--noclip specified)"
 fi
 
 [ ! -f "$VESKTOP_SOURCE_DIR/$VESKTOP_DESKTOP_FILE" ] && { echo "Error: $VESKTOP_DESKTOP_FILE not found in $VESKTOP_SOURCE_DIR"; exit 1; }
@@ -336,7 +343,7 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
+if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     echo "Editing gpu-screen-recorder config"
     ~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILED TO KILL GPU_SCREEN_RECORDER"; exit 1; }
     CONFIG_FILE="/home/$USER/.var/app/com.dec05eba.gpu_screen_recorder/config/gpu-screen-recorder/config"
@@ -352,6 +359,8 @@ if flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     else
         echo "Warning: $CONFIG_FILE not found. Cannot modify main.use_new_ui."
     fi
+elif [ "$NOCLIP" = true ]; then
+    echo "Skipping: gpu-screen-recorder config edit (--noclip specified)"
 fi
 
 echo "Script Finished"
