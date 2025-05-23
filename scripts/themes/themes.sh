@@ -30,7 +30,7 @@ fi
 
 if [ ! -d "$HOME/.config/hyde/themes/Obsidian Purple" ]; then
   echo "Importing Obsidian Purple..."
-  hydectl theme import --name "Obsidian Purple" --url https://github.com/amit-0i/Obsidian-Purple
+  hydectl theme import --name "Obsidian-Purple" --url https://github.com/amit-0i/Obsidian-Purple
 else
   echo "Skipped Obsidian Purple, already exists."
 fi
