@@ -14,7 +14,7 @@ check_repo_updates() {
     local pull_command=$2
     local repo_name=$(basename "$repo_dir")
 
-    if  ! -d "$repo_dir" ; then
+    if [ ! -d "$repo_dir" ]; then
         echo "Error: Directory $repo_dir does not exist."
         return 1
     }
