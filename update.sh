@@ -33,7 +33,7 @@ check_repo_updates() {
     if ! git fetch origin 2>/dev/null; then
         if [ "$repo_name" = "Extra" ]; then
             echo "Warning: Unable to access Extra repository (may be private). Skipping."
-            return 0
+            return 2  # special code for "skip this repo"
         else
             echo "Error: Failed to fetch updates for $repo_name."
             return 1
@@ -45,7 +45,7 @@ check_repo_updates() {
 
     if [ -z "$REMOTE" ]; then
         echo "Warning: Remote branch not found for $repo_name. Skipping."
-        return 0
+        return 2
     fi
 
     if [ "$LOCAL" = "$REMOTE" ]; then
@@ -56,18 +56,22 @@ check_repo_updates() {
         $pull_command
         if [ $? -eq 0 ]; then
             echo "$repo_name updated successfully."
+            return 1
         else
             echo "Error: Failed to update $repo_name."
+            return 1
         fi
-        return 1
     fi
 }
 
 extra_updated=0
 hyde_updated=0
 
-check_repo_updates "$HOME/Extra" "git pull" || extra_updated=1
-check_repo_updates "$HOME/HyDE" "git pull origin master" || hyde_updated=1
+check_repo_updates "$HOME/Extra" "git pull"
+case $? in
+    1) extra_updated=1 ;; 
+    2) echo "Skipping Extra repo update due to access issues." ;; 
+esaccheck_repo_updates "$HOME/HyDE" "git pull origin master" || hyde_updated=1
 
 if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ]; then
     echo "Both repositories are up to date. There's nothing to update."
