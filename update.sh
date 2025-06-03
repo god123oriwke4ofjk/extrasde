@@ -30,10 +30,23 @@ check_repo_updates() {
         return 1
     fi
 
-    git fetch origin
+    if ! git fetch origin 2>/dev/null; then
+        if [ "$repo_name" = "Extra" ]; then
+            echo "Warning: Unable to access Extra repository (may be private). Skipping."
+            return 0
+        else
+            echo "Error: Failed to fetch updates for $repo_name."
+            return 1
+        fi
+    fi
 
     LOCAL=$(git rev-parse HEAD)
-    REMOTE=$(git rev-parse @{u})
+    REMOTE=$(git rev-parse @{u} 2>/dev/null)
+
+    if [ -z "$REMOTE" ]; then
+        echo "Warning: Remote branch not found for $repo_name. Skipping."
+        return 0
+    fi
 
     if [ "$LOCAL" = "$REMOTE" ]; then
         echo "$repo_name is up to date."
