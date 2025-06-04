@@ -123,7 +123,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
         echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
     fi
 
-    VPN_LINE="bindd = \$mainMod, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
+    VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
 
     if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
         echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
