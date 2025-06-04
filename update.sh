@@ -11,6 +11,12 @@ EXTRA_VPN_SCRIPT="$HOME/Extra/config/keybinds/vpn.sh"
 
 mkdir -p $TEMP_FOLDER
 
+FORCE_UPDATE=0
+if [ "$1" = "-force" ]; then
+    FORCE_UPDATE=1
+    echo "Force update enabled for HyDE."
+fi
+
 check_repo_updates() {
     local repo_dir=$1
     local pull_command=$2
@@ -83,7 +89,7 @@ case $? in
 esac
 check_repo_updates "$HOME/HyDE" "git pull origin master" || hyde_updated=1
 
-if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ]; then
+if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ] && [ $FORCE_UPDATE -eq 0 ]; then
     echo "Both repositories are up to date. There's nothing to update."
     rm -rf $TEMP_FOLDER
     exit 0
@@ -100,7 +106,7 @@ if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
     mv $HOME/HyDE/Configs/.config/hypr/keybindings.conf $TEMP_FOLDER
 fi
 
-if [ $extra_updated -eq 1 ]; then
+if [ $extra_updated -eq 1 ] || [ $hyde_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
     echo "Updating hyde..."
     cd $HOME/HyDE/Scripts
     ./install.sh -r
