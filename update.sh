@@ -7,6 +7,7 @@ KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 TEMP_FOLDER="/tmp/updateTemp"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 CONFIG_DIR="$HOME/HyDE/Configs"
+EXTRA_VPN_SCRIPT="$HOME/Extra/config/keybinds/vpn.sh"
 
 mkdir -p $TEMP_FOLDER
 
@@ -68,6 +69,12 @@ check_repo_updates() {
 
 extra_updated=0
 hyde_updated=0
+vpn_script_existed=0
+
+if [ -f "$SCRIPT_DIR/vpn.sh" ]; then
+    vpn_script_existed=1
+    echo "Found existing $SCRIPT_DIR/vpn.sh, will check after update."
+fi
 
 check_repo_updates "$HOME/Extra" "git pull"
 case $? in
@@ -97,6 +104,21 @@ if [ $extra_updated -eq 1 ]; then
     echo "Updating hyde..."
     cd $HOME/HyDE/Scripts
     ./install.sh -r
+fi
+
+if [ $vpn_script_existed -eq 1 ] && [ $extra_updated -eq 1 ]; then
+    if [ ! -f "$SCRIPT_DIR/vpn.sh" ]; then
+        if [ -f "$EXTRA_VPN_SCRIPT" ]; then
+            cp "$EXTRA_VPN_SCRIPT" "$SCRIPT_DIR/vpn.sh"
+            chmod +x "$SCRIPT_DIR/vpn.sh"
+            echo "Moved $EXTRA_VPN_SCRIPT to $SCRIPT_DIR/vpn.sh and made it executable."
+            echo "MOVED_SCRIPT: vpn.sh -> $SCRIPT_DIR/vpn.sh" >> "$LOG_FILE"
+        else
+            echo "Warning: $EXTRA_VPN_SCRIPT not found, cannot move to $SCRIPT_DIR/vpn.sh."
+        fi
+    else
+        echo "$SCRIPT_DIR/vpn.sh still exists after update, no need to move."
+    fi
 fi
 
 if ! cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; then
