@@ -172,10 +172,16 @@ if [ $vpn_script_existed -eq 1 ] && [ $extra_updated -eq 1 ]; then
     fi
 fi
 
-if ! cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; then
+if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/dev/null; then
     echo "Changed keybind.conf, remaking it"
-    rm $HOME/.config/hypr/keybindings.conf 
-    mv $TEMP_FOLDER/keybindings.conf $HOME/.config/hypr
+    mkdir -p "$HOME/.config/hypr"
+    if [ -f "$TEMP_FOLDER/keybindings.conf" ]; then
+        cp "$TEMP_FOLDER/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
+        echo "Copied $TEMP_FOLDER/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+    else
+        cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
+        echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+    fi
     if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
         cd $HOME/Extra
         if [ -f "$KEYBINDINGS_CONF" ]; then
@@ -185,12 +191,12 @@ if ! cmp -s $HOME/.config/hypr/keybindings.conf $TEMP_FOLDER/keybindings.conf; t
             echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
         fi
         VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
-        if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null 2>&1; then
             echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
         else
             UTILITIES_START='$d=[$ut]'
             temp_file=$(mktemp)
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
+            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF" 2>/dev/null; then
                 echo "Appending Utilities section to $KEYBINDINGS_CONF"
                 echo -e "\n$UTILITIES_START\n$VPN_LINE" >> "$KEYBINDINGS_CONF"
                 echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
