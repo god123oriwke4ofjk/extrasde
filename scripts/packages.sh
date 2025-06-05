@@ -29,12 +29,28 @@ INSTALL_OSU=false
 INSTALL_LTS=false
 NETFLIX=false
 NOCLIP=false
+OSU_ONLY=false
+
+help_function() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  osu           Install osu! via osu-winello"
+    echo "  lts           Install Linux LTS kernel and headers"
+    echo "  -netflix      Install brave-bin and Netflix 1080p extension"
+    echo "  --noclip      Skip GPU Screen Recorder installation and configuration"
+    echo "  osuonly       Install only osu! and skip all other installations"
+    echo "  -h, -help     Display this help message and exit"
+    exit 0
+}
+
 for arg in "$@"; do
     case "$arg" in
         osu) INSTALL_OSU=true ;;
         lts) INSTALL_LTS=true ;;
         -netflix) NETFLIX=true ;;
         --noclip) NOCLIP=true ;;
+        osuonly) OSU_ONLY=true ;;
+        -h|-help) help_function ;;
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
 done
@@ -48,7 +64,25 @@ ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY)" >> "$LOG_FILE"
+
+if $OSU_ONLY; then
+    if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
+        echo "Installing osu"
+        git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1; }
+        cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
+        chmod +x ./osu_winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
+        echo "1" | ./osu_winello.sh
+        cd - || exit 1
+        rm -rf /tmp/osu
+        echo "INSTALLED_PACKAGE: osu" >> "$LOG_FILE"
+        echo "Installed osu"
+    else
+        echo "Skipped: osu-wine is already installed"
+    fi
+    echo "Script Finished (osuonly mode)"
+    exit 0
+fi
 
 sudo pacman -Syy --noconfirm
 
@@ -100,7 +134,7 @@ done
 if $INSTALL_OSU; then
     if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
         echo "Installing osu"
-        git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1;}
+        git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1; }
         cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
         chmod +x ./osu_winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
         echo "1" | ./osu_winello.sh
@@ -190,7 +224,6 @@ else
     echo "Skipping: Netflix-related setup (brave-bin and extension) not performed (-netflix parameter not provided)"
 fi
 
-# STEAM
 echo "Setting up steam"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "Enabling multilib repository..."
