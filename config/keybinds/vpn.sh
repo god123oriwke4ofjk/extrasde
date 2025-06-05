@@ -17,12 +17,12 @@ command_exists() {
 
 check_sudo_permissions() {
     local sudoers_missing=false
-    if ! sudo -n openvpn --version >/dev/null 2>&1; then
+    if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1; then
         echo "Error: Passwordless sudo for openvpn is not configured."
         sudoers_missing=true
     fi
-    if ! sudo -n killall openvpn >/dev/null 2>&1; then
-        echo "Error: Passwordless sudo for killall openvpn is not configured."
+    if ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
+        echo "Error: Passwordless sudo for killall is not configured."
         sudoers_missing=true
     fi
     if [ "$sudoers_missing" = true ]; then
@@ -32,7 +32,7 @@ check_sudo_permissions() {
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         }
-        if ! sudo -n openvpn --version >/dev/null 2>&1 || ! sudo -n killall openvpn >/dev/null 2>&1; then
+        if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1 || ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
             exit 1
         fi
