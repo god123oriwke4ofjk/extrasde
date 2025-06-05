@@ -25,6 +25,7 @@ KEYBIND_ONLY=false
 SUDOERS_ONLY=false
 KEYBOARD_ONLY=false
 NO_DYNAMIC=false
+LOG_ONLY=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
         --browser)
@@ -47,6 +48,10 @@ while [[ "$1" =~ ^- ]]; do
             KEYBOARD_ONLY=true
             shift
             ;;
+        -log)
+            LOG_ONLY=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -61,12 +66,71 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     KEYBOARD_ONLY=true
 fi
 
+if [ "$LOG_ONLY" = true ]; then
+    mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create directory for $LOG_FILE"; exit 1; }
+    touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
+    echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY)" >> "$LOG_FILE"
+    
+    if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
+        echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
+    fi
+
+    if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
+        echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
+        echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+        declare -A keybind_scripts
+        keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
+        for script_name in "${!keybind_scripts[@]}"; do
+            script_path="$SCRIPT_DIR/$script_name"
+            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+        done
+    fi
+
+    if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
+        if [ "$NO_DYNAMIC" = false ]; then
+            declare -A scripts
+            scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
+            for script_name in "${!scripts[@]}"; do
+                script_path="$SCRIPT_DIR/$script_name"
+                echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
+            done
+            echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
+            echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+        fi
+        echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
+        echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+        echo "CREATED_PROFILE: $ZEN_PROFILE_DIR/default" >> "$LOG_FILE"
+        echo "MODIFIED_ZEN_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+    fi
+
+    if [ "$KEYBOARD_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; }; then
+        echo "CREATED_CONFIG: $USERPREFS_CONF" >> "$LOG_FILE"
+        echo "MODIFIED_USERPREFS: Set kb_layout = us,il in input block" >> "$LOG_FILE"
+    fi
+
+    if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
+        echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
+        if [ -d "$ICONS_SRC_DIR" ]; then
+            for file in "$ICONS_SRC_DIR"/*.svg; do
+                if [ -f "$file" ]; then
+                    target_file="$ICON_DIR/$(basename "$file")"
+                    echo "MOVED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                fi
+            done
+        fi
+        current_timestamp=$(date +%s)
+        echo "Created backup session marker for run at $current_timestamp" >> "$LOG_FILE"
+    fi
+    exit 0
+fi
+
 mkdir -p "$SCRIPT_DIR" || { echo "Error: Failed to create $SCRIPT_DIR"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY)" >> "$LOG_FILE"
 
 if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     echo "Configuring sudoers requires sudo privileges."
@@ -299,7 +363,7 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
         if [ -f "$ZEN_PROFILE_INI" ]; then
             ZEN_PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$ZEN_PROFILE_INI" | head -n1)
             if [ -z "$ZEN_PROFILE_PATH" ]; then
-                ZEN_PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$ZEN_PROFILE_INI" | head -n1)
+                ZEN_PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def=1) print path; p=0} END{if(def=1) print path}' "$ZEN_PROFILE_INI" | head -n1)
             fi
             if [ -n "$ZEN_PROFILE_PATH" ]; then
                 ZEN_PREFS_FILE="$ZEN_PROFILE_DIR/$ZEN_PROFILE_PATH/prefs.js"
