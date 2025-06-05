@@ -130,9 +130,22 @@ if [ ! -f "$LOG_FILE" ]; then
     exit 0
 fi
 
-if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
+mv "$LOG_FILE" "$TEMP_FOLDER/install.log" 2>/dev/null || echo "Warning: Failed to move $LOG_FILE to $TEMP_FOLDER/install.log"
+
+if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
     echo "Found modified keybinds file, setting it up for update."
-    mv $HOME/HyDE/Configs/.config/hypr/keybindings.conf $TEMP_FOLDER
+    cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/tmp/cp_error
+    if grep -q "cannot stat" /tmp/cp_error; then
+        if [ ! -f "$HOME/.config/hypr/keybindings.conf" ]; then
+            if [ -f "$HOME/.config/hypr/keybindings.conf.save" ]; then
+                cp "$HOME/.config/hypr/keybindings.conf.save" "$HOME/.config/hypr/keybindings.conf"
+                echo "Restored $HOME/.config/hypr/keybindings.conf from $HOME/.config/hypr/keybindings.conf.save"
+            else
+                cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
+                echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+            fi
+        fi
+    fi
 fi
 
 if [ $extra_updated -eq 1 ] || [ $hyde_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
@@ -140,6 +153,8 @@ if [ $extra_updated -eq 1 ] || [ $hyde_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 
     cd $HOME/HyDE/Scripts
     ./install.sh -r
 fi
+
+mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null || echo "Warning: Failed to move $TEMP_FOLDER/install.log back to $LOG_FILE"
 
 if [ $vpn_script_existed -eq 1 ] && [ $extra_updated -eq 1 ]; then
     if [ ! -f "$SCRIPT_DIR/vpn.sh" ]; then
