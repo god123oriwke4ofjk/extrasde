@@ -265,8 +265,8 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
         src_script="${keybind_scripts[$script_name]}"
         script_path="$SCRIPT_DIR/$script_name"
         if [ ! -f "$src_script" ]; then
-            echo "Warning: Source script $src_script not found. Skipping."
-            continue
+            echo "Error: Source script $src_script not found. Please ensure the VPN script exists in $CONFIG_DIR."
+            exit 1
         fi
         if [ -f "$script_path" ]; then
             echo "Warning: $script_path already exists."
@@ -317,8 +317,7 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
                 tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
                 if [ "$src_hash" = "$tgt_hash" ]; then
                     echo "$script_path has identical content, checking permissions."
-                    chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                    echo "Made $script_path executable."; }
+                    [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
                 else
                     echo "$script_path has different content."
                     read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
