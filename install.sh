@@ -26,6 +26,8 @@ SUDOERS_ONLY=false
 KEYBOARD_ONLY=false
 NO_DYNAMIC=false
 LOG_ONLY=false
+OUTSUDO=false
+HELP=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
         --browser)
@@ -52,12 +54,34 @@ while [[ "$1" =~ ^- ]]; do
             LOG_ONLY=true
             shift
             ;;
+        -outsudo)
+            OUTSUDO=true
+            shift
+            ;;
+        -h|-help)
+            HELP=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
             ;;
     esac
 done
+
+if [ "$HELP" = true ]; then
+    echo "Usage: $(basename "$0") [OPTIONS]"
+    echo "Options:"
+    echo "  --browser [nodynamic]  Configure browser-related settings (Firefox and Zen profiles)."
+    echo "                        Use 'nodynamic' to skip dynamic-browser.sh installation."
+    echo "  --keybind             Configure keybindings for Hyprland (e.g., VPN toggle)."
+    echo "  --sudoers             Configure sudoers file for NOPASSWD access to openvpn and killall."
+    echo "  --kb                  Configure keyboard layout (us,il) in Hyprland userprefs."
+    echo "  -log                  Log actions to $LOG_FILE without performing them."
+    echo "  -outsudo              Use a GUI (yad) prompt for sudo instead of CLI."
+    echo "  -h, -help             Display this help message and exit."
+    exit 0
+fi
 
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     BROWSER_ONLY=true
@@ -69,7 +93,7 @@ fi
 if [ "$LOG_ONLY" = true ]; then
     mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create directory for $LOG_FILE"; exit 1; }
     touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-    echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY)" >> "$LOG_FILE"
+    echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO)" >> "$LOG_FILE"
     
     if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
         echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
@@ -111,6 +135,7 @@ if [ "$LOG_ONLY" = true ]; then
 
     if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
         echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
+        echo "INSTALLED_PACKAGE: yad" >> "$LOG_FILE"
         if [ -d "$ICONS_SRC_DIR" ]; then
             for file in "$ICONS_SRC_DIR"/*.svg; do
                 if [ -f "$file" ]; then
@@ -130,22 +155,52 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO)" >> "$LOG_FILE"
+
+if [ "$OUTSUDO" = true ]; then
+    if ! pacman -Qs yad >/dev/null 2>&1; then
+        echo "Installing yad for GUI sudo prompt..."
+        sudo pacman -S --noconfirm yad || { echo "Error: Failed to install yad"; exit 1; }
+        echo "INSTALLED_PACKAGE: yad" >> "$LOG_FILE"
+        echo "Installed yad"
+    else
+        echo "Skipping: yad already installed"
+    fi
+    SUDO_CMD="yad --title='Sudo Authentication' --text='Enter your password for sudo access:' --entry --hide-text --button='OK:0' --button='Cancel:1' --width=300 --center --on-top --class='sudo-prompt' --window-icon='dialog-password' | sudo -S"
+    FOCUS_CMD="hyprctl dispatch focuswindow class:sudo-prompt"
+else
+    SUDO_CMD="sudo"
+    FOCUS_CMD=""
+fi
 
 if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     echo "Configuring sudoers requires sudo privileges."
-    sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
+    if [ "$OUTSUDO" = true ]; then
+        eval "$SUDO_CMD -v" || { echo "Error: Sudo authentication failed."; exit 1; }
+        $FOCUS_CMD
+    else
+        sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
+    fi
     if [ ! -f "$SUDOERS_FILE" ]; then
         echo "Configuring sudoers to allow NOPASSWD for openvpn and killall..."
-        sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+        if [ "$OUTSUDO" = true ]; then
+            eval "echo '$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn\n$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn' | $SUDO_CMD bash -c 'cat > $SUDOERS_FILE'" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
+            $FOCUS_CMD
+            eval "$SUDO_CMD chmod 0440 '$SUDOERS_FILE'" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+            $FOCUS_CMD
+            eval "$SUDO_CMD visudo -c -f '$SUDOERS_FILE'" >/dev/null 2>&1 || { echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"; eval "$SUDO_CMD rm -f '$SUDOERS_FILE'"; exit 1; }
+            $FOCUS_CMD
+        else
+            sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
 $USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
 $USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn
 EOF" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
-        sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
-        if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-            echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
-            sudo rm -f "$SUDOERS_FILE"
-            exit 1
+            sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+            if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+                echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+                sudo rm -f "$SUDOERS_FILE"
+                exit 1
+            fi
         fi
         echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
         echo "Created $SUDOERS_FILE for $USER"
@@ -153,16 +208,27 @@ EOF" || { echo "Error: Failed to create $SUDOERS_FILE"; exit 1; }
         if ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn" "$SUDOERS_FILE" || ! grep -q "$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn" "$SUDOERS_FILE"; then
             echo "Updating existing sudoers file..."
             current_timestamp=$(date +%s)
-            sudo cp "$SUDOERS_FILE" "$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
-            sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
+            if [ "$OUTSUDO" = true ]; then
+                eval "$SUDO_CMD cp '$SUDOERS_FILE' '$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp'" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
+                $FOCUS_CMD
+                eval "echo '$USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn\n$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn' | $SUDO_CMD bash -c 'cat > $SUDOERS_FILE'" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
+                $FOCUS_CMD
+                eval "$SUDO_CMD chmod 0440 '$SUDOERS_FILE'" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+                $FOCUS_CMD
+                eval "$SUDO_CMD visudo -c -f '$SUDOERS_FILE'" >/dev/null 2>&1 || { echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"; eval "$SUDO_CMD rm -f '$SUDOERS_FILE'"; exit 1; }
+                $FOCUS_CMD
+            else
+                sudo cp "$SUDOERS_FILE" "$BACKUP_DIR/sudoers_hyde-vpn.$current_timestamp" || { echo "Error: Failed to backup $SUDOERS_FILE"; exit 1; }
+                sudo bash -c "cat > '$SUDOERS_FILE' << 'EOF'
 $USER ALL=(ALL) NOPASSWD: /usr/bin/openvpn
 $USER ALL=(ALL) NOPASSWD: /usr/bin/killall openvpn
 EOF" || { echo "Error: Failed to update $SUDOERS_FILE"; exit 1; }
-            sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
-            if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-                echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
-                sudo rm -f "$SUDOERS_FILE"
-                exit 1
+                sudo chmod 0440 "$SUDOERS_FILE" || { echo "Error: Failed to set permissions on $SUDOERS_FILE"; exit 1; }
+                if ! sudo visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+                    echo "Error: Invalid sudoers configuration in $SUDOERS_FILE"
+                    sudo rm -f "$SUDOERS_FILE"
+                    exit 1
+                fi
             fi
             echo "MODIFIED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
             echo "Updated $SUDOERS_FILE for $USER"
@@ -326,7 +392,7 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
         if [ -f "$PROFILE_INI" ]; then
             PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
             if [ -z "$PROFILE_PATH" ]; then
-                PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def==1) print path; p=0} END{if(def==1) print path}' "$PROFILE_INI" | head -n1)
+                PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def=1) print path; p=0} END{if(def=1) print path}' "$PROFILE_INI" | head -n1)
             fi
             if [ -n "$PROFILE_PATH" ]; then
                 FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
@@ -428,7 +494,12 @@ fi
 
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
     echo "This script requires sudo privileges to install dependencies and configure additional settings."
-    sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
+    if [ "$OUTSUDO" = true ]; then
+        eval "$SUDO_CMD -v" || { echo "Error: Sudo authentication failed."; exit 1; }
+        $FOCUS_CMD
+    else
+        sudo -v || { echo "Error: Sudo authentication failed."; exit 1; }
+    fi
     command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
     ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
     mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
@@ -447,7 +518,12 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         fi
     fi
     if ! pacman -Qs jq >/dev/null 2>&1; then
-        sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
+        if [ "$OUTSUDO" = true ]; then
+            eval "$SUDO_CMD pacman -S --noconfirm jq" || { echo "Error: Failed to install jq"; exit 1; }
+            $FOCUS_CMD
+        else
+            sudo pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
+        fi
         echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
         echo "Installed jq"
     else
