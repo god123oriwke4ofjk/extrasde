@@ -43,7 +43,7 @@ done
 
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 
-ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
+ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
 
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
