@@ -37,10 +37,39 @@ check_repo_updates() {
         return 1
     fi
 
+    REMOTE_URL=$(git config --get remote.origin.url)
+    if [ -z "$REMOTE_URL" ]; then
+        echo "Error: No remote URL found for $repo_name."
+        return 1
+    fi
+
+    export GIT_ASKPASS=/bin/true
+
     if [ "$repo_name" = "Extra" ]; then
-        if ! git ls-remote --exit-code origin >/dev/null 2>&1; then
-            echo "Warning: Unable to access Extra repository (may be private). Skipping."
-            return 2
+        if [[ "$REMOTE_URL" =~ ^https:// ]]; then
+            git ls-remote --heads >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                echo "The repository $repo_name can be pulled without authentication."
+            else
+                echo "Warning: The repository $repo_name requires authentication for git pull. Skipping."
+                return 2
+            fi
+        elif [[ "$REMOTE_URL" =~ ^git@ ]]; then
+            HOST=$(echo "$REMOTE_URL" | sed -n 's/^git@\([^:]*\):.*/\1/p')
+            if [ -z "$HOST" ]; then
+                echo "Error: Could not parse hostname from SSH URL: $REMOTE_URL"
+                return 1
+            fi
+            SSH_TEST=$(ssh -T -o StrictHostKeyChecking=no "$HOST" 2>&1)
+            if echo "$SSH_TEST" | grep -qi "success\|welcome\|authenticated"; then
+                echo "The repository $repo_name can be pulled without authentication (SSH key configured)."
+            else
+                echo "Warning: The repository $repo_name requires authentication for git pull. Skipping."
+                return 2
+            fi
+        else
+            echo "Error: Unrecognized remote URL format: $REMOTE_URL"
+            return 1
         fi
     fi
 
