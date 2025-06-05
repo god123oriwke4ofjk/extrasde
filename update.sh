@@ -139,12 +139,12 @@ if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
         if [ ! -f "$HOME/.config/hypr/keybindings.conf" ]; then
             if [ -f "$HOME/.config/hypr/keybindings.conf.save" ]; then
                 cp "$HOME/.config/hypr/keybindings.conf.save" "$HOME/.config/hypr/keybindings.conf"
+                echoiteral
                 echo "Restored $HOME/.config/hypr/keybindings.conf from $HOME/.config/hypr/keybindings.conf.save"
             else
                 cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
                 echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
             fi
-            hyprctl reload
         fi
     fi
 fi
@@ -157,7 +157,7 @@ fi
 
 mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null || echo "Warning: Failed to move $TEMP_FOLDER/install.log back to $LOG_FILE"
 
-if [ $vpn_script_existed -eq 1 ] && [ $extra_updated -eq 1 ]; then
+if [ $vpn_script_existed -eq 1 ] || [ $extra_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
     if [ ! -f "$SCRIPT_DIR/vpn.sh" ]; then
         if [ -f "$EXTRA_VPN_SCRIPT" ]; then
             cp "$EXTRA_VPN_SCRIPT" "$SCRIPT_DIR/vpn.sh"
@@ -184,6 +184,7 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
     fi
     if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
         cd $HOME/Extra
+        mkdir -p "$BACKUP_DIR"
         if [ -f "$KEYBINDINGS_CONF" ]; then
             find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete
             cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak"
@@ -218,7 +219,7 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
             fi
         fi
         declare -A keybind_scripts
-        keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
+        keybind_scripts["vpn.sh"]="$EXTRA_VPN_SCRIPT"
         for script_name in "${!keybind_scripts[@]}"; do
             src_script="${keybind_scripts[$script_name]}"
             script_path="$SCRIPT_DIR/$script_name"
@@ -238,6 +239,7 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
                     read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
                     if [[ "$replace_script" =~ ^[Yy]$ ]]; then
                         current_timestamp=$(date +%s)
+                        mkdir -p "$BACKUP_DIR"
                         cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp"
                         cp "$src_script" "$script_path"
                         chmod +x "$script_path"
@@ -249,6 +251,7 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
                     fi
                 fi
             else
+                mkdir -p "$SCRIPT_DIR"
                 cp "$src_script" "$script_path"
                 chmod +x "$script_path"
                 echo "Created and made $script_path executable."
