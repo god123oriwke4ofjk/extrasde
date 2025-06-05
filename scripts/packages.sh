@@ -71,8 +71,8 @@ if $OSU_ONLY; then
         echo "Installing osu"
         git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1; }
         cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
-        chmod +x ./osu_winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
-        echo "1" | ./osu_winello.sh
+        chmod +x ./osu-winello.sh || { echo "Error: failed to grant permission to osu-winello.sh"; exit 1; }
+        echo "1" | ./osu-winello.sh
         cd - || exit 1
         rm -rf /tmp/osu
         echo "INSTALLED_PACKAGE: osu" >> "$LOG_FILE"
