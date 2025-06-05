@@ -317,7 +317,7 @@ if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ON
                 tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
                 if [ "$src_hash" = "$tgt_hash" ]; then
                     echo "$script_path has identical content, checking permissions."
-                    [基本的 chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
+                    chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
                 else
                     echo "$script_path has different content."
                     read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
