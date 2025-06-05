@@ -260,12 +260,12 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 
     declare -A keybind_scripts
-    keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
+    keybind_scripts["vpn.sh"]="$KEYBINDS_SRC_DIR/vpn.sh"
     for script_name in "${!keybind_scripts[@]}"; do
         src_script="${keybind_scripts[$script_name]}"
         script_path="$SCRIPT_DIR/$script_name"
         if [ ! -f "$src_script" ]; then
-            echo "Error: Source script $src_script not found. Please ensure the VPN script exists in $CONFIG_DIR."
+            echo "Error: Source script $src_script not found. Please ensure the VPN script exists in $KEYBINDS_SRC_DIR."
             exit 1
         fi
         if [ -f "$script_path" ]; then
