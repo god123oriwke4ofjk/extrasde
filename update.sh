@@ -144,6 +144,7 @@ if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
                 cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
                 echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
             fi
+            hyprctl reload
         fi
     fi
 fi
