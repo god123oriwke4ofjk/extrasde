@@ -8,6 +8,8 @@ TEMP_FOLDER="/tmp/updateTemp"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 CONFIG_DIR="$HOME/HyDE/Configs"
 EXTRA_VPN_SCRIPT="$HOME/Extra/config/keybinds/vpn.sh"
+SCRIPT_PATH="$HOME/Extra/update.sh"
+NEW_SCRIPT_PATH="$HOME/Extra/update.sh.new"
 
 mkdir -p $TEMP_FOLDER
 
@@ -102,9 +104,80 @@ check_repo_updates() {
     fi
 }
 
+check_self_update() {
+    local script_path="$SCRIPT_PATH"
+    local new_script_path="$NEW_SCRIPT_PATH"
+    
+    if [ ! -f "$script_path" ]; then
+        echo "Error: Current script $script_path not found."
+        return 1
+    fi
+    
+    local current_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
+    
+    if [ -f "$new_script_path" ]; then
+        echo "Error: $new_script_path already exists, please remove or rename it."
+        return 1
+    fi
+    
+    cp "$script_path" "$new_script_path" 2>/dev/null || {
+        echo "Error: Failed to copy $script_path to $new_script_path for comparison."
+        return 1
+    }
+    
+    cd "$HOME/Extra" || {
+        echo "Error: Could not navigate to $HOME/Extra."
+        return 1
+    }
+    
+    if ! git fetch origin 2>/dev/null; then
+        echo "Error: Failed to fetch updates for Extra repository."
+        rm -f "$new_script_path"
+        return 1
+    }
+    
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse @{u} 2>/dev/null)
+    
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "Extra repository is up to date, no self-update check needed."
+        rm -f "$new_script_path"
+        return 0
+    fi
+    
+    git pull 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "Extra repository updated successfully."
+        if [ -f "$script_path" ]; then
+            new_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
+            if [ "$current_hash" != "$new_hash" ]; then
+                echo "Script $script_path has been updated. Switching to new version..."
+                chmod +x "$script_path"
+                rm -f "$new_script_path"
+                exec "$script_path" "$@"
+            else
+                echo "Script $script_path unchanged after update."
+                rm -f "$new_script_path"
+                return 0
+            fi
+        else
+            echo "Error: $script_path missing after update."
+            rm -f "$new_script_path"
+            return 1
+        fi
+    else
+        echo "Error: Failed to update Extra repository."
+        rm -f "$new_script_path"
+        return 1
+    fi
+}
+
 extra_updated=0
 hyde_updated=0
 vpn_script_existed=0
+
+check_self_update
+extra_updated=$?
 
 if [ -f "$SCRIPT_DIR/vpn.sh" ]; then
     vpn_script_existed=1
@@ -139,7 +212,6 @@ if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
         if [ ! -f "$HOME/.config/hypr/keybindings.conf" ]; then
             if [ -f "$HOME/.config/hypr/keybindings.conf.save" ]; then
                 cp "$HOME/.config/hypr/keybindings.conf.save" "$HOME/.config/hypr/keybindings.conf"
-                echoiteral
                 echo "Restored $HOME/.config/hypr/keybindings.conf from $HOME/.config/hypr/keybindings.conf.save"
             else
                 cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
