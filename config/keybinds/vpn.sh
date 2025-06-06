@@ -10,6 +10,9 @@ ICON_DIR="$HOME/.local/share/icons/Wallbash-Icon"
 LOCK_FILE="$HOME/.config/vpn/scraper.lock"
 NOTIF_ID=1000
 INSTALL_SCRIPT="$HOME/Extra/install.sh"
+VPNBOOK_PASS_DIR="$HOME/Extra/config/vpnbook-password"
+VPNBOOK_PASS_FILE="$VPNBOOK_PASS_DIR/vpn_password.txt"
+VPNBOOK_GIT_URL="https://github.com/ERM073/vpnbook-password"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -39,6 +42,34 @@ check_sudo_permissions() {
         echo "Sudoers configured successfully."
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "Sudoers Configured" "Passwordless sudo configured successfully."
     fi
+}
+
+update_auth_file() {
+    if [[ ! -d "$VPNBOOK_PASS_DIR" ]]; then
+        echo "Cloning vpnbook-password repository..."
+        mkdir -p "$HOME/Extra/config"
+        git clone "$VPNBOOK_GIT_URL" "$VPNBOOK_PASS_DIR" || {
+            echo "Error: Failed to clone vpnbook-password repository."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Failed to clone vpnbook-password repository."
+            exit 1
+        }
+    fi
+    if [[ ! -f "$VPNBOOK_PASS_FILE" ]]; then
+        echo "Error: Password file $VPNBOOK_PASS_FILE not found."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Password file $VPNBOOK_PASS_FILE not found."
+        exit 1
+    fi
+    local password
+    password=$(cat "$VPNBOOK_PASS_FILE")
+    if [[ -z "$password" ]]; then
+        echo "Error: Password file $VPNBOOK_PASS_FILE is empty."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Password file $VPNBOOK_PASS_FILE is empty."
+        exit 1
+    fi
+    mkdir -p "$(dirname "$AUTH_FILE")"
+    echo -e "vpnbook\n$password" > "$AUTH_FILE"
+    chmod 600 "$AUTH_FILE" 2>/dev/null
+    echo "Authentication file $AUTH_FILE created/updated."
 }
 
 is_vpn_running() {
@@ -115,6 +146,7 @@ map_country() {
 
 connect_to_server() {
     local server=$1
+    update_auth_file
     local temp_log=$(mktemp)
     sudo openvpn --config "$server" --auth-user-pass "$AUTH_FILE" --daemon --log "$temp_log" &
     local vpn_pid=$!
@@ -151,11 +183,6 @@ connect_vpn() {
     if is_vpn_running; then
         echo "Error: VPN is already connected."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Disconnect the current VPN before connecting to a new one."
-        exit 1
-    fi
-    if [[ ! -f "$AUTH_FILE" ]]; then
-        echo "Error: Authentication file $AUTH_FILE not found."
-        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
         exit 1
     fi
     if [[ ! -d "$SERVERS_DIR" ]]; then
@@ -218,11 +245,6 @@ change_vpn() {
     if ! is_vpn_running; then
         echo "Error: No active VPN connection to change."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No active VPN connection to change."
-        exit 1
-    fi
-    if [[ ! -f "$AUTH_FILE" ]]; then
-        echo "Error: Authentication file $AUTH_FILE not found."
-        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Authentication file $AUTH_FILE not found."
         exit 1
     fi
     if [[ ! -d "$SERVERS_DIR" ]]; then
@@ -381,24 +403,7 @@ setup_vpn() {
     else
         echo "libnotify is already installed."
     fi
-    if [[ ! -f "$AUTH_FILE" ]]; then
-        echo "Running vpnbook-password-scraper.sh to create auth.txt..."
-        touch "$LOCK_FILE"
-        notify-send -u critical -i "$ICON_DIR/error.svg" "Scraping New Credentials" "Setting up auth.txt, please wait..."
-        bash "$SCRAPER_SCRIPT" && {
-            chmod 600 "$AUTH_FILE" 2>/dev/null
-            rm -f "$LOCK_FILE"
-            notify-send -u normal -i "$ICON_DIR/vpn.svg" "Credentials Updated" "New VPN credentials have been scraped successfully."
-        } || {
-            rm -f "$LOCK_FILE"
-            echo "Error: vpnbook-password-scraper.sh failed to create $AUTH_FILE."
-            notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Failed to create $AUTH_FILE."
-            exit 1
-        }
-        echo "auth.txt created at $AUTH_FILE."
-    else
-        echo "auth.txt already exists at $AUTH_FILE."
-    fi
+    update_auth_file
     mkdir -p "$SERVERS_DIR"
     echo "Synchronizing servers from $SOURCE_SERVERS_DIR to $SERVERS_DIR..."
     rm -rf "$SERVERS_DIR"/*
@@ -440,7 +445,7 @@ case "$1" in
         echo "  list: Lists all available VPN servers and their locations."
         echo "  connect {random|<country>|<country_code>|<server_name>}: Connects to a random server, a random server in the specified country, or a specific server."
         echo "  change {random|<country>|<country_code>|<server_name>}: Changes the current VPN connection to a different server or country."
-        echo "  setup: Installs dependencies, runs vpnbook-password-scraper.sh if needed, and syncs servers."
+        echo "  setup: Installs dependencies, fetches VPN credentials, and syncs servers."
         exit 1
         ;;
 esac
