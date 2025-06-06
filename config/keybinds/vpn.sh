@@ -31,7 +31,7 @@ check_sudo_permissions() {
     if [ "$sudoers_missing" = true ]; then
         echo "Running $INSTALL_SCRIPT --sudoers to configure sudoers..."
         notify-send -u critical -i "$ICON_DIR/error.svg" "Configuring Sudoers" "Running install.sh --sudoers to set up passwordless sudo..."
-        bash "$INSTALL_SCRIPT" --sudoers || {
+        bash "$INSTALL_SCRIPT" -outsudo --sudoers || {
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         }
