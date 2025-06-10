@@ -13,6 +13,7 @@ INSTALL_SCRIPT="$HOME/Extra/install.sh"
 VPNBOOK_PASS_DIR="$HOME/Extra/config/vpnbook-password"
 VPNBOOK_PASS_FILE="$VPNBOOK_PASS_DIR/vpn_password.txt"
 VPNBOOK_GIT_URL="https://github.com/ERM073/vpnbook-password"
+SUDOERS_LOG="/tmp/vpn_sudoers_check.log"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -20,27 +21,50 @@ command_exists() {
 
 check_sudo_permissions() {
     local sudoers_missing=false
-    if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1; then
-        echo "Error: Passwordless sudo for openvpn is not configured."
+    local current_user
+    current_user=$(whoami)
+    echo "Checking sudo permissions for $current_user at $(date)" > "$SUDOERS_LOG"
+
+    if sudo -n /usr/bin/sudo -l -U "$current_user" | grep -q "NOPASSWD.*openvpn"; then
+        echo "Passwordless sudo for openvpn is configured." >> "$SUDOERS_LOG"
+    else
+        echo "Error: Passwordless sudo for openvpn is not configured." | tee -a "$SUDOERS_LOG"
         sudoers_missing=true
     fi
-    if ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
-        echo "Error: Passwordless sudo for killall is not configured."
+
+    if sudo -n /usr/bin/sudo -l -U "$current_user" | grep -q "NOPASSWD.*killall"; then
+        echo "Passwordless sudo for killall is configured." >> "$SUDOERS_LOG"
+    else
+        echo "Error: Passwordless sudo for killall is not configured." | tee -a "$SUDOERS_LOG"
         sudoers_missing=true
     fi
+
+    if [[ -f "/etc/sudoers.d/vpnbook" ]]; then
+        echo "Sudoers file /etc/sudoers.d/vpnbook exists. Contents:" >> "$SUDOERS_LOG"
+        sudo cat /etc/sudoers.d/vpnbook >> "$SUDOERS_LOG" 2>&1
+    else
+        echo "Warning: Sudoers file /etc/sudoers.d/vpnbook does not exist." >> "$SUDOERS_LOG"
+        sudoers_missing=true
+    fi
+
     if [ "$sudoers_missing" = true ]; then
-        echo "Running $INSTALL_SCRIPT --sudoers to configure sudoers..."
+        echo "Sudoers configuration issue detected. Running $INSTALL_SCRIPT --sudoers..." | tee -a "$SUDOERS_LOG"
         notify-send -u critical -i "$ICON_DIR/error.svg" "Configuring Sudoers" "Running install.sh --sudoers to set up passwordless sudo..."
-        bash "$INSTALL_SCRIPT" -outsudo --sudoers || {
+        bash "$INSTALL_SCRIPT" --sudoers || {
+            echo "Error: Failed to run $INSTALL_SCRIPT --sudoers." | tee -a "$SUDOERS_LOG"
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         }
-        if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1 || ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
+        if ! sudo -n /usr/bin/sudo -l -U "$current_user" | grep -q "NOPASSWD.*openvpn" || \
+           ! sudo -n /usr/bin/sudo -l -U "$current_user" | grep -q "NOPASSWD.*killall"; then
+            echo "Error: Passwordless sudo still not configured after running install.sh." | tee -a "$SUDOERS_LOG"
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
             exit 1
         fi
-        echo "Sudoers configured successfully."
+        echo "Sudoers configured successfully." | tee -a "$SUDOERS_LOG"
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "Sudoers Configured" "Passwordless sudo configured successfully."
+    else
+        echo "Sudoers permissions are correctly configured." >> "$SUDOERS_LOG"
     fi
 }
 
@@ -168,7 +192,7 @@ connect_to_server() {
         echo "VPN connected successfully."
     else
         echo "Error: Failed to connect to VPN."
-        notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Failed to connect to $server."
+        notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Connection Failed" "Failed to connect to $server."
         exit 1
     fi
 }
