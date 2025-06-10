@@ -52,7 +52,7 @@ check_sudo_permissions() {
         echo "Sudoers configuration issue detected. Running $INSTALL_SCRIPT --sudoers..." | tee -a "$SUDOERS_LOG"
         notify-send -u critical -i "$ICON_DIR/error.svg" "Configuring Sudoers" "Running install.sh --sudoers to set up passwordless sudo..."
         if ! bash "$INSTALL_SCRIPT" --sudoers; then
-            echo "Error: Failed to run $INSTALL_SCRIPT --sudoers." | tee -a "$SUDOERS_LOG"
+            echo "Error: Failed to run $INSTALL_SCRIPT -outsudo --sudoers." | tee -a "$SUDOERS_LOG"
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         fi
