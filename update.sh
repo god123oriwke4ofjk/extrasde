@@ -104,71 +104,88 @@ check_repo_updates() {
     fi
 }
 
-check_self_update() {
-    local script_path="$SCRIPT_PATH"
-    local new_script_path="$NEW_SCRIPT_PATH"
-    
-    if [ ! -f "$script_path" ]; then
-        echo "Error: Current script $script_path not found."
+check_repo_updates() {
+    local repo_dir=$1
+    local pull_command=$2
+    local repo_name=$(basename "$repo_dir")
+
+    if [ ! -d "$repo_dir" ]; then
+        echo "Error: Directory $repo_dir does not exist."
         return 1
     fi
-    
-    local current_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-    
-    if [ -f "$new_script_path" ]; then
-        echo "Error: $new_script_path already exists, please remove or rename it."
+
+    cd "$repo_dir" || {
+        echo "Error: Could not navigate to $repo_dir."
+        return 1
+    }
+
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "Error: $repo_dir is not a valid Git repository."
         return 1
     fi
-    
-    cp "$script_path" "$new_script_path" 2>/dev/null || {
-        echo "Error: Failed to copy $script_path to $new_script_path for comparison."
+
+    REMOTE_URL=$(git config --get remote.origin.url)
+    if [ -z "$REMOTE_URL" ]; then
+        echo "Error: No remote URL found for $repo_name."
         return 1
-    }
-    
-    cd "$HOME/Extra" || {
-        echo "Error: Could not navigate to $HOME/Extra."
-        return 1
-    }
-    
-    if ! git fetch origin 2>/dev/null; then
-        echo "Error: Failed to fetch updates for Extra repository."
-        rm -f "$new_script_path"
-        return 1
-    }
-    
-    LOCAL=$(git rev-parse HEAD)
-    REMOTE=$(git rev-parse @{u} 2>/dev/null)
-    
-    if [ "$LOCAL" = "$REMOTE" ]; then
-        echo "Extra repository is up to date, no self-update check needed."
-        rm -f "$new_script_path"
-        return 0
     fi
-    
-    git pull 2>/dev/null
-    if [ $? -eq 0 ]; then
-        echo "Extra repository updated successfully."
-        if [ -f "$script_path" ]; then
-            new_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-            if [ "$current_hash" != "$new_hash" ]; then
-                echo "Script $script_path has been updated. Switching to new version..."
-                chmod +x "$script_path"
-                rm -f "$new_script_path"
-                exec "$script_path" "$@"
+
+    export GIT_ASKPASS=/bin/true
+
+    if [ "$repo_name" = "Extra" ]; then
+        if [[ "$REMOTE_URL" =~ ^https:// ]]; then
+            git ls-remote --heads >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                echo "The repository $repo_name can be pulled without authentication."
             else
-                echo "Script $script_path unchanged after update."
-                rm -f "$new_script_path"
-                return 0
+                echo "Warning: The repository $repo_name requires authentication for git pull. Skipping."
+                return 2
+            fi
+        elif [[ "$REMOTE_URL" =~ ^git@ ]]; then
+            HOST=$(echo "$REMOTE_URL" | sed -n 's/^git@\([^:]*\):.*/\1/p')
+            if [ -z "$HOST" ]; then
+                echo "Error: Could not parse hostname from SSH URL: $REMOTE_URL"
+                return 1
+            fi
+            SSH_TEST=$(ssh -T -o StrictHostKeyChecking=no "$HOST" 2>&1)
+            if echo "$SSH_TEST" | grep -qi "success\|welcome\|authenticated"; then
+                echo "The repository $repo_name can be pulled without authentication (SSH key configured)."
+            else
+                echo "Warning: The repository $repo_name requires authentication for git pull. Skipping."
+                return 2
             fi
         else
-            echo "Error: $script_path missing after update."
-            rm -f "$new_script_path"
+            echo "Error: Unrecognized remote URL format: $REMOTE_URL"
             return 1
         fi
-    else
-        echo "Error: Failed to update Extra repository."
-        rm -f "$new_script_path"
+    fi
+
+    if ! git fetch origin 2>/dev/null; then
+        echo "Error: Failed to fetch updates for $repo_name."
         return 1
+    fi
+
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse @{u} 2>/dev/null)
+
+    if [ -z "$REMOTE" ]; then
+        echo "Warning: Remote branch not found for $repo_name. Skipping."
+        return 2
+    fi
+
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "$repo_name is up to date."
+        return 0
+    else
+        echo "$repo_name has updates available. Pulling changes..."
+        $pull_command
+        if [ $? -eq 0 ]; then
+            echo "$repo_name updated successfully."
+            return 1
+        else
+            echo "Error: Failed to update $repo_name."
+            return 1
+        fi
     fi
 }
 
