@@ -134,7 +134,7 @@ check_self_update() {
         echo "Error: Failed to fetch updates for Extra repository."
         rm -f "$new_script_path"
         return 1
-    }
+    fi
     
     LOCAL=$(git rev-parse HEAD)
     REMOTE=$(git rev-parse @{u} 2>/dev/null)
