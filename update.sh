@@ -11,6 +11,21 @@ EXTRA_VPN_SCRIPT="$HOME/Extra/config/keybinds/vpn.sh"
 SCRIPT_PATH="$HOME/Extra/update.sh"
 NEW_SCRIPT_PATH="$HOME/Extra/update.sh.new"
 
+restore_files() {
+    echo "Error occurred, restoring files from $TEMP_FOLDER..."
+    if [ -f "$TEMP_FOLDER/install.log" ]; then
+        mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null && echo "Restored $LOG_FILE"
+    fi
+    if [ -f "$TEMP_FOLDER/keybindings.conf" ] && [ ! -f "$KEYBINDINGS_CONF" ]; then
+        mv "$TEMP_FOLDER/keybindings.conf" "$KEYBINDINGS_CONF" 2>/dev/null && echo "Restored $KEYBINDINGS_CONF"
+    fi
+    rm -rf "$TEMP_FOLDER" 2>/dev/null && echo "Cleaned up $TEMP_FOLDER"
+    exit 1
+}
+
+set -e
+trap restore_files ERR
+
 mkdir -p $TEMP_FOLDER
 
 FORCE_UPDATE=0
@@ -335,6 +350,7 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
 fi
 
 rm -rf $TEMP_FOLDER
+trap - ERR
 
-echo "Updated successfully completed"
+echo "Update successfully completed"
 exit 0
