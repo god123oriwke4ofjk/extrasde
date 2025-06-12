@@ -19,6 +19,7 @@ ICONS_SRC_DIR="$SCRIPT_BASEDIR/icons"
 CONFIG_DIR="$SCRIPT_BASEDIR/config"
 KEYBINDS_SRC_DIR="$CONFIG_DIR/keybinds"
 SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
+EXTRA_KEYBINDS_SRC_DIR="/home/$USER/Extra/config/keybinds"
 
 BROWSER_ONLY=false
 KEYBIND_ONLY=false
@@ -129,12 +130,22 @@ if [ "$LOG_ONLY" = true ]; then
         echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
         echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
         echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+        echo "DEBUG: Checked game launcher keybind" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5 if applicable" >> "$LOG_FILE"
         declare -A keybind_scripts
         keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
         for script_name in "${!keybind_scripts[@]}"; do
             script_path="$SCRIPT_DIR/$script_name"
             echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
         done
+        if [ -d "$EXTRA_KEYBINDS_SRC_DIR" ]; then
+            for file in "$EXTRA_KEYBINDS_SRC_DIR"/*; do
+                if [ -f "$file" ]; then
+                    target_file="$SCRIPT_DIR/$(basename "$file")"
+                    echo "MOVED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                fi
+            done
+        fi
     fi
 
     if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
@@ -229,19 +240,73 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
         echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
     fi
 
+    if [ -d "$EXTRA_KEYBINDS_SRC_DIR" ]; then
+        moved_files=0
+        replace_files=()
+        for file in "$EXTRA_KEYBINDS_SRC_DIR"/*; do
+            if [ -f "$file" ]; then
+                target_file="$SCRIPT_DIR/$(basename "$file")"
+                if [ -f "$target_file" ]; then
+                    src_hash=$(sha256sum "$file" | cut -d' ' -f1)
+                    tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
+                    if [ "$src_hash" = "$tgt_hash" ]; then
+                        echo "Skipping $(basename "$file"): identical file already exists at $target_file"
+                    else
+                        echo "Found $(basename "$file"): same name but different content at $target_file"
+                        replace_files+=("$file")
+                    fi
+                else
+                    mv "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to move $(basename "$file")"; exit 1; }
+                    chmod +x "$target_file" || { echo "Error: Failed to make $target_file executable"; exit 1; }
+                    echo "Moved and made executable $(basename "$file") to $SCRIPT_DIR/"
+                    echo "MOVED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                    ((moved_files++))
+                fi
+            fi
+        done
+        if [ ${#replace_files[@]} -gt 0 ]; then
+            echo "The following keybind files have the same name but different content in $SCRIPT_DIR:"
+            for file in "${replace_files[@]}"; do
+                echo "- $(basename "$file")"
+            done
+            read -p "Replace these files in $SCRIPT_DIR? [y/N]: " replace_choice
+            if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
+                for file in "${replace_files[@]}"; do
+                    target_file="$SCRIPT_DIR/$(basename "$file")"
+                    current_timestamp=$(date +%s)
+                    cp "$target_file" "$BACKUP_DIR/$(basename "$file").$current_timestamp" || { echo "Error: Failed to backup $target_file"; exit 1; }
+                    mv "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
+                    chmod +x "$target_file" || { echo "Error: Failed to make $target_file executable"; exit 1; }
+                    echo "Replaced and made executable $(basename "$file") in $SCRIPT_DIR/"
+                    echo "REPLACED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                    ((moved_files++))
+                done
+            else
+                echo "Skipping replacement of non-identical keybind files."
+            fi
+        fi
+        [ "$moved_files" -eq 0 ] && echo "No new or replaced keybind files were moved."
+    else
+        echo "Warning: Extra keybinds directory $EXTRA_KEYBINDS_SRC_DIR not found. Skipping keybind file movement."
+    fi
+
     VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
+    GAME_LAUNCHER_LINE="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh"
+    GAME_LAUNCHER_MODIFIED="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh 5"
+
+    temp_file=$(mktemp)
+    modified=false
 
     if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
         echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
     else
         UTILITIES_START='$d=[$ut]'
-        temp_file=$(mktemp)
-
         if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
             echo "Appending Utilities section to $KEYBINDINGS_CONF"
             echo -e "\n$UTILITIES_START\n$VPN_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
             echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
             echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN binding" >> "$LOG_FILE"
+            modified=true
         else
             awk -v vpn_line="$VPN_LINE" -v util_start="$UTILITIES_START" '
                 BEGIN { found_util=0; added=0 }
@@ -256,7 +321,27 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
             echo "Added VPN binding to Utilities section in $KEYBINDINGS_CONF"
             echo "DEBUG: Added VPN binding to Utilities section" >> "$LOG_FILE"
             echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+            modified=true
         fi
+    fi
+
+    temp_file=$(mktemp)
+    if grep -Fx "$GAME_LAUNCHER_MODIFIED" "$KEYBINDINGS_CONF" > /dev/null; then
+        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $KEYBINDINGS_CONF"
+    elif grep -F "bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh" "$KEYBINDINGS_CONF" | grep -qv "gamelauncher.sh [0-9]" > /dev/null; then
+        echo "Modifying game launcher binding to use gamelauncher.sh 5 in $KEYBINDINGS_CONF"
+        sed "s|$GAME_LAUNCHER_LINE|$GAME_LAUNCHER_MODIFIED|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo "DEBUG: Modified game launcher binding to gamelauncher.sh 5" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5" >> "$LOG_FILE"
+        modified=true
+    else
+        echo "Skipping: Game launcher binding either has a parameter or is not set to gamelauncher.sh in $KEYBINDINGS_CONF"
+    fi
+    rm -f "$temp_file"
+
+    if [ "$modified" = true ]; then
+        echo "Updated $KEYBINDINGS_CONF with necessary changes"
     fi
 
     declare -A keybind_scripts
