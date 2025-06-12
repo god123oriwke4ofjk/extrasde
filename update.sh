@@ -260,7 +260,7 @@ if [ $vpn_script_existed -eq 1 ] || [ $extra_updated -eq 1 ] || [ $FORCE_UPDATE 
 fi
 
 if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/dev/null; then
-    echo "Changed keybind.conf, remaking it"
+    echo "Changed keybind.conf, updating it using install.sh --keybind"
     mkdir -p "$HOME/.config/hypr"
     if [ -f "$TEMP_FOLDER/keybindings.conf" ]; then
         cp "$TEMP_FOLDER/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
@@ -278,74 +278,12 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
             echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
             echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
         fi
-        VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
-        if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null 2>&1; then
-            echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
-        else
-            UTILITIES_START='$d=[$ut]'
-            temp_file=$(mktemp)
-            if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF" 2>/dev/null; then
-                echo "Appending Utilities section to $KEYBINDINGS_CONF"
-                echo -e "\n$UTILITIES_START\n$VPN_LINE" >> "$KEYBINDINGS_CONF"
-                echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN binding" >> "$LOG_FILE"
-            else
-                awk -v vpn_line="$VPN_LINE" -v util_start="$UTILITIES_START" '
-                    BEGIN { found_util=0; added=0 }
-                    $0 ~ util_start { found_util=1; print; next }
-                    found_util && !added && /^[[:space:]]*$/ { print vpn_line "\n"; added=1; print; next }
-                    found_util && !added && /^\$d=/ { print vpn_line "\n"; added=1; print; next }
-                    found_util && !added && !/^[[:space:]]*$/ && !/^bind/ { print vpn_line "\n"; added=1; print; next }
-                    { print }
-                    END { if (found_util && !added) print vpn_line }
-                ' "$KEYBINDINGS_CONF" > "$temp_file"
-                mv "$temp_file" "$KEYBINDINGS_CONF"
-                echo "Added VPN binding to Utilities section in $KEYBINDINGS_CONF"
-                echo "DEBUG: Added VPN binding to Utilities section" >> "$LOG_FILE"
-                echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
-            fi
-        fi
-        declare -A keybind_scripts
-        keybind_scripts["vpn.sh"]="$EXTRA_VPN_SCRIPT"
-        for script_name in "${!keybind_scripts[@]}"; do
-            src_script="${keybind_scripts[$script_name]}"
-            script_path="$SCRIPT_DIR/$script_name"
-            if [ ! -f "$src_script" ]; then
-                echo "Warning: Source script $src_script not found. Skipping."
-                continue
-            fi
-            if [ -f "$script_path" ]; then
-                echo "Warning: $script_path already exists."
-                src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
-                tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-                if [ "$src_hash" = "$tgt_hash" ]; then
-                    echo "$script_path has identical content, checking permissions."
-                    [ -x "$script_path" ] || { chmod +x "$script_path"; echo "Made $script_path executable."; }
-                else
-                    echo "$script_path has different content."
-                    read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
-                    if [[ "$replace_script" =~ ^[Yy]$ ]]; then
-                        current_timestamp=$(date +%s)
-                        mkdir -p "$BACKUP_DIR"
-                        cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp"
-                        cp "$src_script" "$script_path"
-                        chmod +x "$script_path"
-                        echo "Replaced and made $script_path executable."
-                        echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-                    else
-                        echo "Skipping replacement of $script_path."
-                        [ -x "$script_path" ] || { chmod +x "$script_path"; echo "Made $script_path executable."; }
-                    fi
-                fi
-            else
-                mkdir -p "$SCRIPT_DIR"
-                cp "$src_script" "$script_path"
-                chmod +x "$script_path"
-                echo "Created and made $script_path executable."
-                echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-            fi
-            ls -l "$script_path"
-        done
+        bash "$HOME/Extra/install.sh" --keybind || {
+            echo "Error: Failed to run install.sh --keybind"
+            restore_files
+        }
+        echo "Ran install.sh --keybind to update keybindings"
+        echo "MODIFIED_KEYBINDINGS: Updated via install.sh --keybind" >> "$LOG_FILE"
     fi
 fi
 
