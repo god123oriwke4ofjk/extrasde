@@ -9,16 +9,11 @@ KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 USERPREFS_CONF="/home/$USER/.config/hypr/userprefs.conf"
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
-PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
-ZEN_PROFILE_DIR="$HOME/.zen"
-ZEN_PROFILE_INI="$ZEN_PROFILE_DIR/profiles.ini"
-DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
+SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 SCRIPT_BASEDIR="$(dirname "$(realpath "$0")")"
 ICONS_SRC_DIR="$SCRIPT_BASEDIR/icons"
 CONFIG_DIR="$SCRIPT_BASEDIR/config"
 KEYBINDS_SRC_DIR="$CONFIG_DIR/keybinds"
-SUDOERS_FILE="/etc/sudoers.d/hyde-vpn"
 EXTRA_KEYBINDS_SRC_DIR="/home/$USER/Extra/config/keybinds"
 
 BROWSER_ONLY=false
@@ -73,7 +68,7 @@ done
 if [ "$HELP" = true ]; then
     echo "Usage: $(basename "$0") [OPTIONS]"
     echo "Options:"
-    echo "  --browser [nodynamic]  Configure browser-related settings (Firefox and Zen profiles)."
+    echo "  --browser [nodynamic]  Configure browser-related settings using browsers.sh."
     echo "                        Use 'nodynamic' to skip dynamic-browser.sh installation."
     echo "  --keybind             Configure keybindings for Hyprland (e.g., VPN toggle)."
     echo "  --sudoers             Configure sudoers file for NOPASSWD access to openvpn and killall."
@@ -142,27 +137,14 @@ if [ "$LOG_ONLY" = true ]; then
             for file in "$EXTRA_KEYBINDS_SRC_DIR"/*; do
                 if [ -f "$file" ]; then
                     target_file="$SCRIPT_DIR/$(basename "$file")"
-                    echo "MOVED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                    echo "COPIED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
                 fi
             done
         fi
     fi
 
-    if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
-        if [ "$NO_DYNAMIC" = false ]; then
-            declare -A scripts
-            scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
-            for script_name in "${!scripts[@]}"; do
-                script_path="$SCRIPT_DIR/$script_name"
-                echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-            done
-            echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
-            echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
-        fi
-        echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
-        echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
-        echo "CREATED_PROFILE: $ZEN_PROFILE_DIR/default" >> "$LOG_FILE"
-        echo "MODIFIED_ZEN_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
+    if [ "$BROWSER_ONLY" = true ]; then
+        echo "CALLED_BROWSER_SCRIPT: browsers.sh with nodynamic=$NO_DYNAMIC" >> "$LOG_FILE"
     fi
 
     if [ "$KEYBOARD_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; }; then
@@ -241,7 +223,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 
     if [ -d "$EXTRA_KEYBINDS_SRC_DIR" ]; then
-        moved_files=0
+        copied_files=0
         replace_files=()
         for file in "$EXTRA_KEYBINDS_SRC_DIR"/*; do
             if [ -f "$file" ]; then
@@ -256,11 +238,11 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
                         replace_files+=("$file")
                     fi
                 else
-                    mv "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to move $(basename "$file")"; exit 1; }
+                    cp "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to copy $(basename "$file")"; exit 1; }
                     chmod +x "$target_file" || { echo "Error: Failed to make $target_file executable"; exit 1; }
-                    echo "Moved and made executable $(basename "$file") to $SCRIPT_DIR/"
-                    echo "MOVED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
-                    ((moved_files++))
+                    echo "Copied and made executable $(basename "$file") to $SCRIPT_DIR/"
+                    echo "COPIED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                    ((copied_files++))
                 fi
             fi
         done
@@ -275,19 +257,19 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
                     target_file="$SCRIPT_DIR/$(basename "$file")"
                     current_timestamp=$(date +%s)
                     cp "$target_file" "$BACKUP_DIR/$(basename "$file").$current_timestamp" || { echo "Error: Failed to backup $target_file"; exit 1; }
-                    mv "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
+                    cp "$file" "$SCRIPT_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
                     chmod +x "$target_file" || { echo "Error: Failed to make $target_file executable"; exit 1; }
                     echo "Replaced and made executable $(basename "$file") in $SCRIPT_DIR/"
                     echo "REPLACED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
-                    ((moved_files++))
+                    ((copied_files++))
                 done
             else
                 echo "Skipping replacement of non-identical keybind files."
             fi
         fi
-        [ "$moved_files" -eq 0 ] && echo "No new or replaced keybind files were moved."
+        [ "$copied_files" -eq 0 ] && echo "No new or replaced keybind files were copied."
     else
-        echo "Warning: Extra keybinds directory $EXTRA_KEYBINDS_SRC_DIR not found. Skipping keybind file movement."
+        echo "Warning: Extra keybinds directory $EXTRA_KEYBINDS_SRC_DIR not found. Skipping keybind file copying."
     fi
 
     VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
@@ -385,138 +367,18 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     done
 fi
 
-if [ "$BROWSER_ONLY" = true ] || { [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
-    if [ "$NO_DYNAMIC" = false ]; then
-        declare -A scripts
-        scripts["dynamic-browser.sh"]="$CONFIG_DIR/dynamic_browser.sh"
-        for script_name in "${!scripts[@]}"; do
-            src_script="${scripts[$script_name]}"
-            script_path="$SCRIPT_DIR/$script_name"
-            if [ ! -f "$src_script" ]; then
-                echo "Error: Source script $src_script not found."
-                exit 1
-            fi
-            if [ -f "$script_path" ]; then
-                echo "Warning: $script_path already exists."
-                src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
-                tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-                if [ "$src_hash" = "$tgt_hash" ]; then
-                    echo "$script_path has identical content, checking permissions."
-                    [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-                else
-                    echo "$script_path has different content."
-                    read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
-                    if [[ "$replace_script" =~ ^[Yy]$ ]]; then
-                        current_timestamp=$(date +%s)
-                        cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
-                        cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-                        chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                        echo "Replaced and made $script_path executable."
-                        echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-                    else
-                        echo "Skipping replacement of $script_path."
-                        [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-                    fi
-                fi
-            else
-                cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-                chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                echo "Created and made $script_path executable."
-                echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-            fi
-            ls -l "$script_path"
-        done
-
-        if [ -f "$USERPREFS_CONF" ]; then
-            current_timestamp=$(date +%s)
-            cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
-            echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
-            echo "Backed up $USERPREFS_CONF"
-        fi
-        if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
-            echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
-            echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
-            echo "Configured dynamic-browser.sh to run on login"
-        else
-            echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
-        fi
-    else
-        echo "Skipping dynamic-browser.sh installation and configuration (--browser nodynamic)"
+if [ "$BROWSER_ONLY" = true ]; then
+    BROWSER_SCRIPT="$SCRIPT_BASEDIR/browsers.sh"
+    if [ ! -f "$BROWSER_SCRIPT" ]; then
+        echo "Error: $BROWSER_SCRIPT not found."
+        exit 1
     fi
-
-    if command -v firefox >/dev/null 2>&1; then
-        if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
-            echo "Firefox profile directory or profiles.ini not found. Creating a new profile..."
-            firefox --no-remote -CreateProfile default || { echo "Warning: Failed to create a new Firefox profile. Skipping autoscrolling."; }
-            echo "CREATED_PROFILE: $FIREFOX_PROFILE_DIR/default" >> "$LOG_FILE"
-        fi
-        if [ -f "$PROFILE_INI" ]; then
-            PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$PROFILE_INI" | head -n1)
-            if [ -z "$PROFILE_PATH" ]; then
-                PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def=1) print path; p=0} END{if(def=1) print path}' "$PROFILE_INI" | head -n1)
-            fi
-            if [ -n "$PROFILE_PATH" ]; then
-                FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
-                if [ -f "$FIREFOX_PREFS_FILE" ]; then
-                    if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
-                        echo "Skipping: Firefox autoscrolling is already enabled."
-                    else
-                        pkill -f firefox 2>/dev/null
-                        echo 'user_pref("general.autoScroll", true);' >> "$FIREFOX_PREFS_FILE" || { echo "Error: Failed to modify $FIREFOX_PREFS_FILE"; exit 1; }
-                        current_timestamp=$(date +%s)
-                        cp "$FIREFOX_PREFS_FILE" "$BACKUP_DIR/prefs.js.$current_timestamp" || { echo "Warning: Failed to backup $FIREFOX_PREFS_FILE"; }
-                        echo "Enabled Firefox autoscrolling in $FIREFOX_PREFS_FILE"
-                        echo "MODIFIED_FIREFOX_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
-                    fi
-                else
-                    echo "Warning: Firefox prefs.js not found at $FIREFOX_PREFS_FILE. Skipping autoscrolling."
-                fi
-            else
-                echo "Warning: Could not find default profile in profiles.ini. Skipping autoscrolling."
-            fi
-        else
-            echo "Warning: profiles.ini not found at $PROFILE_INI. Skipping autoscrolling."
-        fi
+    if [ "$NO_DYNAMIC" = true ]; then
+        bash "$BROWSER_SCRIPT" nodynamic || { echo "Error: Failed to run browsers.sh"; exit 1; }
     else
-        echo "Warning: Firefox is not installed. Skipping autoscrolling configuration."
+        bash "$BROWSER_SCRIPT" || { echo "Error: Failed to run browsers.sh"; exit 1; }
     fi
-
-    if command -v zen >/dev/null 2>&1 || [ -x "/opt/zen-browser-bin/zen-bin" ]; then
-        if [ ! -d "$ZEN_PROFILE_DIR" ] || [ ! -f "$ZEN_PROFILE_INI" ]; then
-            echo "Zen Browser profile directory or profiles.ini not found. Creating a new profile..."
-            /opt/zen-browser-bin/zen-bin --no-remote -CreateProfile default || { echo "Warning: Failed to create a new Zen Browser profile. Skipping autoscrolling."; }
-            echo "CREATED_PROFILE: $ZEN_PROFILE_DIR/default" >> "$LOG_FILE"
-        fi
-        if [ -f "$ZEN_PROFILE_INI" ]; then
-            ZEN_PROFILE_PATH=$(awk -F'=' '/\[Install[0-9A-F]+\]/{p=1; path=""} p&&/Default=/{path=$2} p&&/^$/{print path; p=0} END{if(path) print path}' "$ZEN_PROFILE_INI" | head -n1)
-            if [ -z "$ZEN_PROFILE_PATH" ]; then
-                ZEN_PROFILE_PATH=$(awk -F'=' '/\[Profile[0-9]+\]/{p=1; path=""; def=0} p&&/Path=/{path=$2} p&&/Default=1/{def=1} p&&/^$/{if(def=1) print path; p=0} END{if(def=1) print path}' "$ZEN_PROFILE_INI" | head -n1)
-            fi
-            if [ -n "$ZEN_PROFILE_PATH" ]; then
-                ZEN_PREFS_FILE="$ZEN_PROFILE_DIR/$ZEN_PROFILE_PATH/prefs.js"
-                if [ -f "$ZEN_PREFS_FILE" ]; then
-                    if grep -q 'user_pref("general.autoScroll", true)' "$ZEN_PREFS_FILE"; then
-                        echo "Skipping: Zen Browser autoscrolling is already enabled."
-                    else
-                        pkill -f zen-bin 2>/dev/null
-                        echo 'user_pref("general.autoScroll", true);' >> "$ZEN_PREFS_FILE" || { echo "Error: Failed to modify $ZEN_PREFS_FILE"; exit 1; }
-                        current_timestamp=$(date +%s)
-                        cp "$ZEN_PREFS_FILE" "$BACKUP_DIR/prefs_zen.js.$current_timestamp" || { echo "Warning: Failed to backup $ZEN_PREFS_FILE"; }
-                        echo "Enabled Zen Browser autoscrolling in $ZEN_PREFS_FILE"
-                        echo "MODIFIED_ZEN_AUTOSCROLL: Enabled general.autoScroll" >> "$LOG_FILE"
-                    fi
-                else
-                    echo "Warning: Zen Browser prefs.js not found at $ZEN_PREFS_FILE. Skipping autoscrolling."
-                fi
-            else
-                echo "Warning: Could not find default profile in Zen Browser profiles.ini. Skipping autoscrolling."
-            fi
-        else
-            echo "Warning: Zen Browser profiles.ini not found at $ZEN_PROFILE_INI. Skipping autoscrolling."
-        fi
-    else
-        echo "Warning: Zen Browser is not installed. Skipping autoscrolling configuration."
-    fi
+    echo "CALLED_BROWSER_SCRIPT: browsers.sh with nodynamic=$NO_DYNAMIC" >> "$LOG_FILE"
 fi
 
 if [ "$KEYBOARD_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ]; }; then
@@ -557,7 +419,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     echo "This script requires sudo privileges to install dependencies and configure additional settings."
     command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
     ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
-    mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
+    mkdir -p "$ICON_DIR" || 철 -p "$ICON_DIR"; exit 1
     mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
     current_timestamp=$(date +%s)
     if [ -d "$BACKUP_DIR" ]; then
@@ -573,13 +435,13 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         fi
     fi
     if ! pacman -Qs jq >/dev/null 2>&1; then
-        $SUDO_CMD pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
+        $SUDOCMD pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
         echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
         echo "Installed jq"
     else
         echo "Skipping: jq already installed"
     fi
-    moved_files=0
+    copied_files=0
     replace_files=()
     if [ -d "$ICONS_SRC_DIR" ]; then
         for file in "$ICONS_SRC_DIR"/*.svg; do
@@ -591,14 +453,14 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
                     if [ "$src_hash" = "$tgt_hash" ]; then
                         echo "Skipping $(basename "$file"): identical file already exists at $target_file"
                     else
-                        echo "Found $(basename "$file"): same name but different content at $target_file"
+                        echo "Found $(basename "$file"))": same name but different content at $target_file"
                         replace_files+=("$file")
                     fi
                 else
-                    mv "$file" "$ICON_DIR/" || { echo "Error: Failed to move $(basename "$file")"; exit 1; }
-                    echo "Moved $(basename "$file") to $ICON_DIR/"
+                    mv "$file" "$ICON_DIR/" || { echo "Error: Failed to copy $(basename "$file")"; exit 1; }
+                    echo "Copied $(basename "$file") to $ICON_DIR/"
                     echo "MOVED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
-                    ((moved_files++))
+                    ((copied_files++))
                 fi
             fi
         done
@@ -614,17 +476,17 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
             for file in "${replace_files[@]}"; do
                 target_file="$ICON_DIR/$(basename "$file")"
-                cp "$target_file" "$BACKUP_DIR/$(basename "$file").$current_timestamp" || { echo "Error: Failed to backup $target_file"; exit 1; }
+                cp "$target_file" "$BACKUP_DIR/$(basename "$file")" || { echo "Error: Failed to backup $target_file"; exit 1; }
                 mv "$file" "$ICON_DIR/" || { echo "Error: Failed to replace $(basename "$file")"; exit 1; }
                 echo "Replaced $(basename "$file") in $ICON_DIR/"
                 echo "REPLACED_SVG: $(basename "$file") -> $target_file" >> "$LOG_FILE"
-                ((moved_files++))
+                ((copied_files++))
             done
         else
             echo "Skipping replacement of non-identical files."
         fi
     fi
-    [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were moved."
+    [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were copied."
 fi
 
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
