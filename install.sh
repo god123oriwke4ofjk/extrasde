@@ -123,12 +123,13 @@ if [ "$LOG_ONLY" = true ]; then
 
     if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
         echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
-        echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
-        echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+        echo "DEBUG: Appended Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added VPN and window switcher bindings to Utilities section" >> "$LOG_FILE"
         echo "DEBUG: Checked game launcher keybind" >> "$LOG_FILE"
         echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5 if applicable" >> "$LOG_FILE"
         declare -A keybind_scripts
         keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
+        keybind_scripts["windowSwitcher.sh"]="$CONFIG_DIR/windowSwitcher.sh"
         for script_name in "${!keybind_scripts[@]}"; do
             script_path="$SCRIPT_DIR/$script_name"
             echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
@@ -273,43 +274,49 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 
     VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
+    WINDOW_SWITCHER_LINE="bindd = \$mainMod TAB, \$d window switcher, exec, \$scrPath/windowSwitcher.sh # open window switcher"
     GAME_LAUNCHER_LINE="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh"
     GAME_LAUNCHER_MODIFIED="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh 5"
 
     temp_file=$(mktemp)
     modified=false
 
-    if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: VPN binding already exists in $KEYBINDINGS_CONF"
+    if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null && grep -Fx "$WINDOW_SWITCHER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        echo "Skipping: VPN and window switcher bindings already exist in $KEYBINDINGS_CONF"
     else
         UTILITIES_START='$d=[$ut]'
         if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
             echo "Appending Utilities section to $KEYBINDINGS_CONF"
-            echo -e "\n$UTILITIES_START\n$VPN_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "DEBUG: Appended Utilities section with VPN binding" >> "$LOG_FILE"
-            echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN binding" >> "$LOG_FILE"
+            echo -e "\n$UTILITIES_START\n$VPN_LINE\n$WINDOW_SWITCHER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Appended Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
             modified=true
         else
-            awk -v vpn_line="$VPN_LINE" -v util_start="$UTILITIES_START" '
-                BEGIN { found_util=0; added=0 }
+            awk -v vpn_line="$VPN_LINE" -v ws_line="$WINDOW_SWITCHER_LINE" -v util_start="$UTILITIES_START" '
+                BEGIN { found_util=0; added_vpn=0; added_ws=0 }
                 $0 ~ util_start { found_util=1; print; next }
-                found_util && !added && /^[[:space:]]*$/ { print vpn_line "\n"; added=1; print; next }
-                found_util && !added && /^\$d=/ { print vpn_line "\n"; added=1; print; next }
-                found_util && !added && !/^[[:space:]]*$/ && !/^bind/ { print vpn_line "\n"; added=1; print; next }
+                found_util && !added_vpn && /^[[:space:]]*$/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
+                found_util && !added_vpn && /^\$d=/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
+                found_util && !added_vpn && !/^[[:space:]]*$/ && !/^bind/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
                 { print }
-                END { if (found_util && !added) print vpn_line }
+                END { 
+                    if (found_util) {
+                        if (!added_vpn) print vpn_line
+                        if (!added_ws) print ws_line
+                    }
+                }
             ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
             mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "Added VPN binding to Utilities section in $KEYBINDINGS_CONF"
-            echo "DEBUG: Added VPN binding to Utilities section" >> "$LOG_FILE"
-            echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+            echo "Added VPN and/or window switcher bindings to Utilities section in $KEYBINDINGS_CONF"
+            echo "DEBUG: Added VPN and/or window switcher bindings to Utilities section" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added VPN and/or window switcher bindings to Utilities section" >> "$LOG_FILE"
             modified=true
         fi
     fi
 
     temp_file=$(mktemp)
     if grep -Fx "$GAME_LAUNCHER_MODIFIED" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $KEYBINDINGS_CONF"
+        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $ keypad.bindings.conf"
     elif grep -F "bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh" "$KEYBINDINGS_CONF" | grep -qv "gamelauncher.sh [0-9]" > /dev/null; then
         echo "Modifying game launcher binding to use gamelauncher.sh 5 in $KEYBINDINGS_CONF"
         sed "s|$GAME_LAUNCHER_LINE|$GAME_LAUNCHER_MODIFIED|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
@@ -328,11 +335,12 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
 
     declare -A keybind_scripts
     keybind_scripts["vpn.sh"]="$KEYBINDS_SRC_DIR/vpn.sh"
+    keybind_scripts["windowSwitcher.sh"]="$KEYBINDS_SRC_DIR/windowSwitcher.sh"
     for script_name in "${!keybind_scripts[@]}"; do
         src_script="${keybind_scripts[$script_name]}"
         script_path="$SCRIPT_DIR/$script_name"
         if [ ! -f "$src_script" ]; then
-            echo "Error: Source script $src_script not found. Please ensure the VPN script exists in $KEYBINDS_SRC_DIR."
+            echo "Error: Source script $src_script not found. Please ensure the script exists in $KEYBINDS_SRC_DIR."
             exit 1
         fi
         if [ -f "$script_path" ]; then
@@ -419,7 +427,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
     echo "This script requires sudo privileges to install dependencies and configure additional settings."
     command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
     ping -c 1 archlinux.org >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
-    mkdir -p "$ICON_DIR" || 철 -p "$ICON_DIR"; exit 1
+    mkdir -p "$ICON_DIR" || { echo "Error: Failed to create $ICON_DIR"; exit 1; }
     mkdir -p "$(dirname "$KEYBINDINGS_CONF")" || { echo "Error: Failed to create $(dirname "$KEYBINDINGS_CONF")"; exit 1; }
     current_timestamp=$(date +%s)
     if [ -d "$BACKUP_DIR" ]; then
@@ -435,7 +443,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         fi
     fi
     if ! pacman -Qs jq >/dev/null 2>&1; then
-        $SUDOCMD pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
+        $SUDO_CMD pacman -S --noconfirm jq || { echo "Error: Failed to install jq"; exit 1; }
         echo "INSTALLED_PACKAGE: jq" >> "$LOG_FILE"
         echo "Installed jq"
     else
@@ -486,7 +494,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
             echo "Skipping replacement of non-identical files."
         fi
     fi
-    [ "$moved_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were copied."
+    [ "$copied_files" -eq 0 ] && [ -d "$ICONS_SRC_DIR" ] && echo "No new or replaced .svg files were copied."
 fi
 
 if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; then
