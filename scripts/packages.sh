@@ -30,6 +30,7 @@ INSTALL_LTS=false
 NETFLIX=false
 NOCLIP=false
 OSU_ONLY=false
+HYPRSHELL_ONLY=false
 
 help_function() {
     echo "Usage: $0 [options]"
@@ -39,6 +40,7 @@ help_function() {
     echo "  -netflix      Install brave-bin and Netflix 1080p extension"
     echo "  --noclip      Skip GPU Screen Recorder installation and configuration"
     echo "  osuonly       Install only osu! and skip all other installations"
+    echo "  -hyprshell    Install and configure hyprshell only"
     echo "  -h, -help     Display this help message and exit"
     exit 0
 }
@@ -50,6 +52,7 @@ for arg in "$@"; do
         -netflix) NETFLIX=true ;;
         --noclip) NOCLIP=true ;;
         osuonly) OSU_ONLY=true ;;
+        -hyprshell) HYPRSHELL_ONLY=true ;;
         -h|-help) help_function ;;
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
@@ -64,7 +67,139 @@ ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY)" >> "$LOG_FILE"
+
+setup_hyprshell() {
+    echo "Installing hyprshell"
+    if ! yay -Qs hyprshell >/dev/null 2>&1; then
+        yay -S --noconfirm hyprshell || { echo "Error: Failed to install hyprshell"; exit 1; }
+        echo "INSTALLED_PACKAGE: hyprshell" >> "$LOG_FILE"
+        echo "Installed hyprshell"
+    else
+        echo "Skipping: hyprshell already installed"
+    fi
+
+    echo "Configuring hyprshell"
+    mkdir -p ~/.config/hyprshell/ || { echo "Error: Failed to create ~/.config/hyprshell/"; exit 1; }
+
+    cat > ~/.config/hyprshell/config.toml << 'EOF'
+layerrules = true
+kill_bind = "ctrl+shift+alt, h"
+
+[windows]
+scale = 8.5
+workspaces_per_row = 5
+strip_html_from_workspace_title = true
+
+[windows.overview.open]
+key = "Tab"
+modifier = "super"
+
+[windows.overview.navigate]
+forward = "tab"
+
+[windows.overview.navigate.reverse]
+mod = "shift"
+
+[windows.overview.other]
+filter_by = []
+hide_filtered = false
+
+[windows.switch.open]
+modifier = "alt"
+
+[windows.switch.navigate]
+forward = "tab"
+
+[windows.switch.navigate.reverse]
+mod = "shift"
+
+[windows.switch.other]
+filter_by = []
+hide_filtered = true
+EOF
+    echo "CREATED_FILE: ~/.config/hyprshell/config.toml" >> "$LOG_FILE"
+    echo "Created hyprshell config.toml"
+
+    cat > ~/.config/hyprshell/style.css << 'EOF'
+:root {
+    --border-color: rgba(90, 90, 120, 0.4);
+    --border-color-active: rgba(239, 9, 9, 0.9);
+
+    --bg-color: rgba(20, 20, 20, 0.9);
+    --bg-color-hover: rgba(40, 40, 50, 1);
+
+    --border-radius: 12px;
+    --border-size: 3px;
+    --border-style: solid;
+    --border-style-secondary: dashed;
+
+    --text-color: rgba(245, 245, 245, 1);
+
+    --window-padding: 2px;
+}
+
+.monitor {
+}
+
+.workspace {
+}
+
+.client {
+}
+
+.client-image {
+}
+
+.launcher {
+}
+
+.launcher-input {
+}
+
+.launcher-results {
+}
+
+.launcher-item {
+}
+
+.launcher-exec {
+}
+
+.launcher-key {
+}
+
+.launcher-plugins {
+}
+
+.launcher-plugin {
+}
+EOF
+    echo "CREATED_FILE: ~/.config/hyprshell/style.css" >> "$LOG_FILE"
+    echo "Created hyprshell style.css"
+
+    systemctl --user enable --now hyprshell.service || { echo "Error: Failed to enable hyprshell.service"; exit 1; }
+    echo "ENABLED_SERVICE: hyprshell.service" >> "$LOG_FILE"
+    echo "Enabled and started hyprshell.service"
+}
+
+if $HYPRSHELL_ONLY; then
+    if ! command -v yay >/dev/null 2>&1; then
+        sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
+        git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
+        cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
+        makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
+        cd - || exit 1
+        rm -rf /tmp/yay
+        echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
+        echo "Installed yay"
+    else
+        echo "Skipping: yay already installed"
+    fi
+    setup_hyprshell
+    echo "Script Finished (hyprshell mode)"
+    exit 0
+fi
 
 if $OSU_ONLY; then
     if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
@@ -131,12 +266,14 @@ for pkg in $YAY_PACKAGES; do
     fi
 done
 
+setup_hyprshell
+
 if $INSTALL_OSU; then
     if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
         echo "Installing osu"
         git clone https://github.com/NelloKudo/osu-winello.git /tmp/osu || { echo "Error: Failed to clone osu repository"; exit 1; }
         cd /tmp/osu || { echo "Error: Failed to change to /tmp/osu"; exit 1; }
-        chmod +x ./osu-winello.sh || { echo "Error: failed to grant permission to osu_winello.sh"; exit 1; }
+        chmod +x ./osu-winello.sh || { echo "Error: failed to grant permission to osu-winello.sh"; exit 1; }
         echo "1" | ./osu-winello.sh
         cd - || exit 1
         rm -rf /tmp/osu
@@ -252,7 +389,7 @@ if compgen -G "$STEAM_CONFIG" > /dev/null; then
             echo "Found Steam config at $config. Enabling Steam Play..."
             cp "$config" "$config.bak"
             sed -i '/"SteamPlay"/,/}/ s/"EnableForAll"\s*"\w*"/"EnableForAll" "1"/' "$config"
-            sed -i '/"SteamPlay"/,/}/ s/"DesiredVersion"\s*".*"/"DesiredVersion" "'"${proton_version}"'"/' "$config"
+            sed -i '/"SteamPlay"/,/}/ s/"DesiredVersion"\s*".*"/"DesiredVersion" "${proton_version}""/' "$config"
         fi
     done
 else
