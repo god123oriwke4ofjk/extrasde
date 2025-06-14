@@ -116,7 +116,7 @@ for pkg in $PACMAN_PACKAGES; do
 done
 
 echo "Installing yay packages"
-YAY_PACKAGES="qemu-full"
+YAY_PACKAGES="qemu-full hyprshell"
 if $NETFLIX; then
     YAY_PACKAGES="$YAY_PACKAGES brave-bin netflix"
 fi
