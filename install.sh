@@ -276,7 +276,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 
     VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
-    WINDOW_SWITCHER_LINE="bindd = \$mainMod TAB, \$d window switcher, exec, \$scrPath/windowswitcher.sh # open window switcher"
+    WINDOW_SWITCHER_LINE="bindd = \$mainMod, TAB, \$d window switcher, exec, \$scrPath/windowSwitcher.sh # open window switcher"
     GAME_LAUNCHER_LINE="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh"
     GAME_LAUNCHER_MODIFIED="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh 5"
 
