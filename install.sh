@@ -127,13 +127,14 @@ if [ "$LOG_ONLY" = true ]; then
         echo "MODIFIED_KEYBINDINGS: Added VPN and window switcher bindings to Utilities section" >> "$LOG_FILE"
         echo "DEBUG: Checked game launcher keybind" >> "$LOG_FILE"
         echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5 if applicable" >> "$LOG_FILE"
-        declare -A keybind_scripts
-        keybind_scripts["vpn.sh"]="$CONFIG_DIR/vpn.sh"
-        keybind_scripts["windowSwitcher.sh"]="$CONFIG_DIR/windowSwitcher.sh"
-        for script_name in "${!keybind_scripts[@]}"; do
-            script_path="$SCRIPT_DIR/$script_name"
-            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-        done
+        if [ -d "$KEYBINDS_SRC_DIR" ]; then
+            for file in "$KEYBINDS_SRC_DIR"/*; do
+                if [ -f "$file" ]; then
+                    target_file="$SCRIPT_DIR/$(basename "$file")"
+                    echo "COPIED_KEYBIND: $(basename "$file") -> $target_file" >> "$LOG_FILE"
+                fi
+            done
+        fi
         if [ -d "$EXTRA_KEYBINDS_SRC_DIR" ]; then
             for file in "$EXTRA_KEYBINDS_SRC_DIR"/*; do
                 if [ -f "$file" ]; then
@@ -234,6 +235,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
                     tgt_hash=$(sha256sum "$target_file" | cut -d' ' -f1)
                     if [ "$src_hash" = "$tgt_hash" ]; then
                         echo "Skipping $(basename "$file"): identical file already exists at $target_file"
+                        [ -x "$target_file" ] || { chmod +x "$target_file" || { echo "Error: Failed to make $target_file executable"; exit 1; }; echo "Made $target_file executable."; }
                     else
                         echo "Found $(basename "$file"): same name but different content at $target_file"
                         replace_files+=("$file")
@@ -274,7 +276,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     fi
 
     VPN_LINE="bindd = \$mainMod Alt, V, \$d toggle vpn, exec, \$scrPath/vpn.sh toggle # toggle vpn"
-    WINDOW_SWITCHER_LINE="bindd = \$mainMod TAB, \$d window switcher, exec, \$scrPath/windowSwitcher.sh # open window switcher"
+    WINDOW_SWITCHER_LINE="bindd = \$mainMod TAB, \$d window switcher, exec, \$scrPath/windowswitcher.sh # open window switcher"
     GAME_LAUNCHER_LINE="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh"
     GAME_LAUNCHER_MODIFIED="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh 5"
 
@@ -316,7 +318,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
 
     temp_file=$(mktemp)
     if grep -Fx "$GAME_LAUNCHER_MODIFIED" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $ keypad.bindings.conf"
+        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $KEYBINDINGS_CONF"
     elif grep -F "bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh" "$KEYBINDINGS_CONF" | grep -qv "gamelauncher.sh [0-9]" > /dev/null; then
         echo "Modifying game launcher binding to use gamelauncher.sh 5 in $KEYBINDINGS_CONF"
         sed "s|$GAME_LAUNCHER_LINE|$GAME_LAUNCHER_MODIFIED|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
@@ -332,47 +334,6 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     if [ "$modified" = true ]; then
         echo "Updated $KEYBINDINGS_CONF with necessary changes"
     fi
-
-    declare -A keybind_scripts
-    keybind_scripts["vpn.sh"]="$KEYBINDS_SRC_DIR/vpn.sh"
-    keybind_scripts["windowSwitcher.sh"]="$KEYBINDS_SRC_DIR/windowSwitcher.sh"
-    for script_name in "${!keybind_scripts[@]}"; do
-        src_script="${keybind_scripts[$script_name]}"
-        script_path="$SCRIPT_DIR/$script_name"
-        if [ ! -f "$src_script" ]; then
-            echo "Error: Source script $src_script not found. Please ensure the script exists in $KEYBINDS_SRC_DIR."
-            exit 1
-        fi
-        if [ -f "$script_path" ]; then
-            echo "Warning: $script_path already exists."
-            src_hash=$(sha256sum "$src_script" | cut -d' ' -f1)
-            tgt_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-            if [ "$src_hash" = "$tgt_hash" ]; then
-                echo "$script_path has identical content, checking permissions."
-                [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-            else
-                echo "$script_path has different content."
-                read -p "Replace $script_path with content from $src_script? [y/N]: " replace_script
-                if [[ "$replace_script" =~ ^[Yy]$ ]]; then
-                    current_timestamp=$(date +%s)
-                    cp "$script_path" "$BACKUP_DIR/$script_name.$current_timestamp" || { echo "Error: Failed to backup $script_path"; exit 1; }
-                    cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-                    chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                    echo "Replaced and made $script_path executable."
-                    echo "REPLACED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-                else
-                    echo "Skipping replacement of $script_path."
-                    [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
-                fi
-            fi
-        else
-            cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-            chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-            echo "Created and made $script_path executable."
-            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-        fi
-        ls -l "$script_path"
-    done
 fi
 
 if [ "$BROWSER_ONLY" = true ]; then
