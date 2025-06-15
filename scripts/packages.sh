@@ -60,6 +60,11 @@ done
 
 [ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
 
+if ! grep -qi "arch" /etc/os-release; then
+    echo "Error: This script is designed for Arch Linux."
+    exit 1
+fi
+
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 
 ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
@@ -183,19 +188,20 @@ EOF
     echo "Enabled and started hyprshell.service"
 }
 
+if ! command -v yay >/dev/null 2>&1; then
+    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
+    git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
+    cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
+    makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
+    cd - || exit 1
+    rm -rf /tmp/yay
+    echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
+    echo "Installed yay"
+else
+    echo "Skipping: yay already installed"
+fi
+
 if $HYPRSHELL_ONLY; then
-    if ! command -v yay >/dev/null 2>&1; then
-        sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
-        git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
-        cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
-        makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
-        cd - || exit 1
-        rm -rf /tmp/yay
-        echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
-        echo "Installed yay"
-    else
-        echo "Skipping: yay already installed"
-    fi
     setup_hyprshell
     echo "Script Finished (hyprshell mode)"
     exit 0
@@ -221,21 +227,8 @@ fi
 
 sudo pacman -Syy --noconfirm
 
-if ! command -v yay >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
-    git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
-    cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
-    makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
-    cd - || exit 1
-    rm -rf /tmp/yay
-    echo "INSTALLED_PACKAGE: yay" >> "$LOG_FILE"
-    echo "Installed yay"
-else
-    echo "Skipping: yay already installed"
-fi
-
 echo "Installing pacman packages"
-PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf"
+PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs"
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
@@ -459,9 +452,24 @@ if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recor
         sudo ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
-        ~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILLLLEEEEEEED"; exit 1; }
+        ~/.local/lib/hyde/dontkillsteam.sh || { echo "Error: Failed to execute dontkillsteam.sh"; exit 1; }
     else
         echo "Window not found."
+    fi
+
+    echo "Editing gpu-screen-recorder config"
+    CONFIG_FILE="/home/$USER/.var/app/com.dec05eba.gpu_screen_recorder/config/gpu-screen-recorder/config"
+    sleep 1
+    if [ -f "$CONFIG_FILE" ]; then
+        sed -i 's/main.use_new_ui false/main.use_new_ui true/' "$CONFIG_FILE"
+        if [[ $? -eq 0 ]]; then
+            echo "Successfully changed main.use_new_ui to true in $CONFIG_FILE"
+        else
+            echo "Error: Failed to modify main.use_new_ui in $CONFIG_FILE"
+            exit 1
+        fi
+    else
+        echo "Warning: $CONFIG_FILE not found. Cannot modify main.use_new_ui."
     fi
 elif [ "$NOCLIP" = true ]; then
     echo "Skipping: gpu-screen-recorder setup (--noclip specified)"
@@ -513,25 +521,22 @@ else
     echo "LOGGED_WARNING: $VESKTOP_CONFIG_FILE not found for hardware acceleration" >> "$LOG_FILE"
 fi
 
-if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
-    echo "Editing gpu-screen-recorder config"
-    ~/.local/lib/hyde/dontkillsteam.sh || { echo "FAILED TO KILL GPU_SCREEN_RECORDER"; exit 1; }
-    CONFIG_FILE="/home/$USER/.var/app/com.dec05eba.gpu_screen_recorder/config/gpu-screen-recorder/config"
-    sleep 1
-    if [ -f "$CONFIG_FILE" ]; then
-        sed -i 's/main.use_new_ui false/main.use_new_ui true/' "$CONFIG_FILE"
-        if [[ $? -eq 0 ]]; then
-            echo "Successfully changed main.use_new_ui to true in $CONFIG_FILE"
-        else
-            echo "Error: Failed to modify main.use_new_ui in $CONFIG_FILE"
-            exit 1
-        fi
-    else
-        echo "Warning: $CONFIG_FILE not found. Cannot modify main.use_new_ui."
-    fi
-elif [ "$NOCLIP" = true ]; then
-    echo "Skipping: gpu-screen-recorder config edit (--noclip specified)"
-fi
+echo "Setting up image viewers"
+xdg-mime default feh.desktop image/png image/jpeg image/bmp image/webp
+echo "Set feh as default for PNG, JPEG, BMP, and WEBP" >> "$LOG_FILE"
+echo "Set feh as default for PNG, JPEG, BMP, and WEBP"
+
+xdg-mime default nomacs.desktop image/gif
+echo "Set nomacs as default for GIF" >> "$LOG_FILE"
+echo "Set nomacs as default for GIF"
+
+echo "Checking default applications for image formats..."
+xdg-mime query default image/png >> "$LOG_FILE"
+xdg-mime query default image/gif >> "$LOG_FILE"
+xdg-mime query default image/png
+xdg-mime query default image/gif
+
+echo "Setup complete! feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
 
 echo "Script Finished"
 exit 0
