@@ -76,7 +76,7 @@ echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonl
 
 setup_hyprshell() {
     echo "Installing hyprshell"
-    if ! yay -Qs hyprshell >/dev/null 2>&1; then
+    if yay -Ss ^hyprshell$ | grep -q ^hyprshell$; then
         yay -S --noconfirm hyprshell || { echo "Error: Failed to install hyprshell"; exit 1; }
         echo "INSTALLED_PACKAGE: hyprshell" >> "$LOG_FILE"
         echo "Installed hyprshell"
@@ -183,7 +183,7 @@ EOF
     echo "CREATED_FILE: ~/.config/hyprshell/style.css" >> "$LOG_FILE"
     echo "Created hyprshell style.css"
 
-    systemctl --user enable --now hyprshell.service || { echo "Error: Failed to enable hyprshell.service"; exit 1; }
+    systemctl --user enable hyprshell.service || { echo "Error: Failed to enable hyprshell.service"; exit 1; }
     echo "ENABLED_SERVICE: hyprshell.service" >> "$LOG_FILE"
     echo "Enabled and started hyprshell.service"
 }
