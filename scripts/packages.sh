@@ -77,11 +77,11 @@ echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonl
 setup_hyprshell() {
     echo "Installing hyprshell"
     if yay -Ss ^hyprshell$ | grep -q ^hyprshell$; then
+        echo "Skipping: hyprshell already installed"
+    else
         yay -S --noconfirm hyprshell || { echo "Error: Failed to install hyprshell"; exit 1; }
         echo "INSTALLED_PACKAGE: hyprshell" >> "$LOG_FILE"
         echo "Installed hyprshell"
-    else
-        echo "Skipping: hyprshell already installed"
     fi
 
     echo "Configuring hyprshell"
