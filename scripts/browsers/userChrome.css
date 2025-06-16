@@ -1,0 +1,18 @@
+:where(.tab-background) {
+    box-shadow: none !important;
+    border-radius: 10px !important;
+}
+
+.tabbrowser-tab {
+    transition: min-width 0.3s cubic-bezier(0.270, 0.910, 0.435, 1.280), max-width 0.3s cubic-bezier(0.270, 0.910, 0.435, 1.280), height 0.1s ease !important;
+    height: 100%;
+}
+
+.tabbrowser-tab[fadein]:not([pinned]) {
+    max-width: 175px !important;
+}
+
+.tabbrowser-tab[selected]:not([pinned]) {
+    min-width: 250px !important;
+    max-width: 250px !important;
+}
