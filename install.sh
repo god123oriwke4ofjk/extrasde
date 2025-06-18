@@ -127,6 +127,8 @@ if [ "$LOG_ONLY" = true ]; then
         echo "MODIFIED_KEYBINDINGS: Added VPN and window switcher bindings to Utilities section" >> "$LOG_FILE"
         echo "DEBUG: Checked game launcher keybind" >> "$LOG_FILE"
         echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5 if applicable" >> "$LOG_FILE"
+        echo "DEBUG: Appended zoom binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added zoom binding" >> "$LOG_FILE"
         if [ -d "$KEYBINDS_SRC_DIR" ]; then
             for file in "$KEYBINDS_SRC_DIR"/*; do
                 if [ -f "$file" ]; then
@@ -279,6 +281,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     WINDOW_SWITCHER_LINE="bindd = \$mainMod, TAB, \$d window switcher, exec, \$scrPath/windowSwitcher.sh # open window switcher"
     GAME_LAUNCHER_LINE="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh"
     GAME_LAUNCHER_MODIFIED="bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh 5"
+    ZOOM_LINE="bindd = \$mainMod Shift, Z, \$d toggle zoom, exec, hypr-zoom # toggle zoom"
 
     temp_file=$(mktemp)
     modified=false
@@ -329,6 +332,18 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     else
         echo "Skipping: Game launcher binding either has a parameter or is not set to gamelauncher.sh in $KEYBINDINGS_CONF"
     fi
+
+    # Add zoom binding
+    if grep -Fx "$ZOOM_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
+        echo "Skipping: Zoom binding already exists in $KEYBINDINGS_CONF"
+    else
+        echo "Appending zoom binding to $KEYBINDINGS_CONF"
+        echo -e "\n$ZOOM_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append zoom binding to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo "DEBUG: Appended zoom binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added zoom binding" >> "$LOG_FILE"
+        modified=true
+    fi
+
     rm -f "$temp_file"
 
     if [ "$modified" = true ]; then
@@ -422,7 +437,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
                     if [ "$src_hash" = "$tgt_hash" ]; then
                         echo "Skipping $(basename "$file"): identical file already exists at $target_file"
                     else
-                        echo "Found $(basename "$file"))": same name but different content at $target_file"
+                        echo "Found $(basename "$file")": same name but different content at $target_file"
                         replace_files+=("$file")
                     fi
                 else
