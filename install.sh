@@ -377,7 +377,7 @@ EOF
         echo "Created $USERPREFS_CONF with kb_layout = us,il"
     else
         [ ! -w "$USERPREFS_CONF" ] && { echo "Error: $USERPREFS_CONF is not writable."; exit 1; }
-        if awk '/^[[:space:]]*input[[:space:]]*{/,/^[[:space:]]*}/ {if ($0 ~ /^[[:space:]]*kb_layout[[:space:]]*=[[:space:]]*us,il/) found=1} END {exit !found}' "$USERPREFS_CONF"; then
+        if awk '/^[[:space:]]*input[[:space:]]*{/,/^[[:space:]]*}/ {if ($0 ~ /^[[:space:]]*kb_layout[[:space:]]*=[[:space:]]*us,il/) found=1} END {exit !found}' "$USERPREFS_CONF" 2>/dev/null; then
             echo "Skipping: 'kb_layout = us,il' already set in input block of $USERPREFS_CONF"
         else
             temp_file=$(mktemp)
@@ -437,7 +437,7 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
                     if [ "$src_hash" = "$tgt_hash" ]; then
                         echo "Skipping $(basename "$file"): identical file already exists at $target_file"
                     else
-                        echo "Found $(basename "$file")": same name but different content at $target_file"
+                        echo "Found $(basename "$file"): same name but different content at $target_file"
                         replace_files+=("$file")
                     fi
                 else
