@@ -123,12 +123,12 @@ if [ "$LOG_ONLY" = true ]; then
 
     if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
         echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
-        echo "DEBUG: Appended Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
-        echo "MODIFIED_KEYBINDINGS: Added VPN and window switcher bindings to Utilities section" >> "$LOG_FILE"
-        echo "DEBUG: Checked game launcher keybind" >> "$LOG_FILE"
-        echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5 if applicable" >> "$LOG_FILE"
-        echo "DEBUG: Appended zoom binding" >> "$LOG_FILE"
-        echo "MODIFIED_KEYBINDINGS: Added zoom binding" >> "$LOG_FILE"
+        echo "DEBUG: Updated or added VPN and window switcher bindings in Utilities section" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated or added VPN and window switcher bindings in Utilities section" >> "$LOG_FILE"
+        echo "DEBUG: Updated or added game launcher binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated or added game launcher binding" >> "$LOG_FILE"
+        echo "DEBUG: Updated or added zoom binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated or added zoom binding" >> "$LOG_FILE"
         if [ -d "$KEYBINDS_SRC_DIR" ]; then
             for file in "$KEYBINDS_SRC_DIR"/*; do
                 if [ -f "$file" ]; then
@@ -286,56 +286,88 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
     temp_file=$(mktemp)
     modified=false
 
-    if grep -Fx "$VPN_LINE" "$KEYBINDINGS_CONF" > /dev/null && grep -Fx "$WINDOW_SWITCHER_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: VPN and window switcher bindings already exist in $KEYBINDINGS_CONF"
+    UTILITIES_START='$d=[$ut]'
+    if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
+        echo "Appending Utilities section to $KEYBINDINGS_CONF"
+        echo -e "\n$UTILITIES_START\n$VPN_LINE\n$WINDOW_SWITCHER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo "DEBUG: Appended Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
+        modified=true
     else
-        UTILITIES_START='$d=[$ut]'
-        if ! grep -q "$UTILITIES_START" "$KEYBINDINGS_CONF"; then
-            echo "Appending Utilities section to $KEYBINDINGS_CONF"
-            echo -e "\n$UTILITIES_START\n$VPN_LINE\n$WINDOW_SWITCHER_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "DEBUG: Appended Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
-            echo "MODIFIED_KEYBINDINGS: Added Utilities section with VPN and window switcher bindings" >> "$LOG_FILE"
+        if grep -q "bindd = \$mainMod Alt, V," "$KEYBINDINGS_CONF"; then
+            echo "Replacing existing VPN binding in $KEYBINDINGS_CONF"
+            sed -e "s|^bindd = \$mainMod Alt, V,.*|$VPN_LINE|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Replaced VPN binding" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Updated VPN binding" >> "$LOG_FILE"
             modified=true
         else
-            awk -v vpn_line="$VPN_LINE" -v ws_line="$WINDOW_SWITCHER_LINE" -v util_start="$UTILITIES_START" '
-                BEGIN { found_util=0; added_vpn=0; added_ws=0 }
+            echo "Appending VPN binding to Utilities section in $KEYBINDINGS_CONF"
+            awk -v vpn_line="$VPN_LINE" -v util_start="$UTILITIES_START" '
+                BEGIN { found_util=0 }
                 $0 ~ util_start { found_util=1; print; next }
-                found_util && !added_vpn && /^[[:space:]]*$/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
-                found_util && !added_vpn && /^\$d=/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
-                found_util && !added_vpn && !/^[[:space:]]*$/ && !/^bind/ { if (!added_vpn) { print vpn_line "\n" ws_line "\n"; added_vpn=1; added_ws=1 } else if (!added_ws) { print ws_line "\n"; added_ws=1 }; print; next }
+                found_util && /^[[:space:]]*$/ { print vpn_line "\n"; found_util=0; print; next }
+                found_util && /^\$d=/ { print vpn_line "\n"; found_util=0; print; next }
+                found_util && !/^[[:space:]]*$/ && !/^bind/ { print vpn_line "\n"; found_util=0; print; next }
                 { print }
-                END { 
-                    if (found_util) {
-                        if (!added_vpn) print vpn_line
-                        if (!added_ws) print ws_line
-                    }
-                }
+                END { if (found_util) print vpn_line }
             ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
             mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-            echo "Added VPN and/or window switcher bindings to Utilities section in $KEYBINDINGS_CONF"
-            echo "DEBUG: Added VPN and/or window switcher bindings to Utilities section" >> "$LOG_FILE"
-            echo "MODIFIED_KEYBINDINGS: Added VPN and/or window switcher bindings to Utilities section" >> "$LOG_FILE"
+            echo "DEBUG: Appended VPN binding to Utilities section" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added VPN binding to Utilities section" >> "$LOG_FILE"
+            modified=true
+        fi
+
+        temp_file=$(mktemp)
+        if grep -q "bindd = \$mainMod, TAB," "$KEYBINDINGS_CONF"; then
+            echo "Replacing existing window switcher binding in $KEYBINDINGS_CONF"
+            sed -e "s|^bindd = \$mainMod, TAB,.*|$WINDOW_SWITCHER_LINE|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Replaced window switcher binding" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Updated window switcher binding" >> "$LOG_FILE"
+            modified=true
+        else
+            echo "Appending window switcher binding to Utilities section in $KEYBINDINGS_CONF"
+            awk -v ws_line="$WINDOW_SWITCHER_LINE" -v util_start="$UTILITIES_START" '
+                BEGIN { found_util=0 }
+                $0 ~ util_start { found_util=1; print; next }
+                found_util && /^[[:space:]]*$/ { print ws_line "\n"; found_util=0; print; next }
+                found_util && /^\$d=/ { print ws_line "\n"; found_util=0; print; next }
+                found_util && !/^[[:space:]]*$/ && !/^bind/ { print ws_line "\n"; found_util=0; print; next }
+                { print }
+                END { if (found_util) print ws_line }
+            ' "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to process $KEYBINDINGS_CONF with awk"; rm -f "$temp_file"; exit 1; }
+            mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+            echo "DEBUG: Appended window switcher binding to Utilities section" >> "$LOG_FILE"
+            echo "MODIFIED_KEYBINDINGS: Added window switcher binding to Utilities section" >> "$LOG_FILE"
             modified=true
         fi
     fi
 
     temp_file=$(mktemp)
-    if grep -Fx "$GAME_LAUNCHER_MODIFIED" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: Game launcher binding already set to gamelauncher.sh 5 in $KEYBINDINGS_CONF"
-    elif grep -F "bindd = \$mainMod Shift, G, \$d open game launcher , exec, \$scrPath/gamelauncher.sh" "$KEYBINDINGS_CONF" | grep -qv "gamelauncher.sh [0-9]" > /dev/null; then
-        echo "Modifying game launcher binding to use gamelauncher.sh 5 in $KEYBINDINGS_CONF"
-        sed "s|$GAME_LAUNCHER_LINE|$GAME_LAUNCHER_MODIFIED|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+    if grep -q "bindd = \$mainMod Shift, G," "$KEYBINDINGS_CONF"; then
+        echo "Replacing existing game launcher binding in $KEYBINDINGS_CONF"
+        sed -e "s|^bindd = \$mainMod Shift, G,.*|$GAME_LAUNCHER_MODIFIED|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
         mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
-        echo "DEBUG: Modified game launcher binding to gamelauncher.sh 5" >> "$LOG_FILE"
-        echo "MODIFIED_KEYBINDINGS: Updated game launcher to gamelauncher.sh 5" >> "$LOG_FILE"
+        echo "DEBUG: Replaced game launcher binding to gamelauncher.sh 5" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated game launcher binding to gamelauncher.sh 5" >> "$LOG_FILE"
         modified=true
     else
-        echo "Skipping: Game launcher binding either has a parameter or is not set to gamelauncher.sh in $KEYBINDINGS_CONF"
+        echo "Appending game launcher binding to $KEYBINDINGS_CONF"
+        echo -e "\n$GAME_LAUNCHER_MODIFIED" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append game launcher binding to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo "DEBUG: Appended game launcher binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Added game launcher binding" >> "$LOG_FILE"
+        modified=true
     fi
 
-    # Add zoom binding
-    if grep -Fx "$ZOOM_LINE" "$KEYBINDINGS_CONF" > /dev/null; then
-        echo "Skipping: Zoom binding already exists in $KEYBINDINGS_CONF"
+    temp_file=$(mktemp)
+    if grep -q "bindd = \$mainMod Shift, Z," "$KEYBINDINGS_CONF"; then
+        echo "Replacing existing zoom binding in $KEYBINDINGS_CONF"
+        sed -e "s|^bindd = \$mainMod Shift, Z,.*|$ZOOM_LINE|" "$KEYBINDINGS_CONF" > "$temp_file" || { echo "Error: Failed to modify $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        mv "$temp_file" "$KEYBINDINGS_CONF" || { echo "Error: Failed to update $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
+        echo "DEBUG: Replaced zoom binding" >> "$LOG_FILE"
+        echo "MODIFIED_KEYBINDINGS: Updated zoom binding" >> "$LOG_FILE"
+        modified=true
     else
         echo "Appending zoom binding to $KEYBINDINGS_CONF"
         echo -e "\n$ZOOM_LINE" >> "$KEYBINDINGS_CONF" || { echo "Error: Failed to append zoom binding to $KEYBINDINGS_CONF"; rm -f "$temp_file"; exit 1; }
