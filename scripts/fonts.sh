@@ -72,7 +72,7 @@ if [ "$DISCORD_ONLY" = false ]; then
         else
             echo "Warning: yay not found. Please install yay to install ttf-alef."
             echo "[$(date)] WARNING: yay not found for ttf-alef installation" >> "$LOG_FILE"
-        }
+        fi
     else
         echo "Alef font is already installed."
         echo "[$(date)] SKIPPED: Alef font already installed" >> "$LOG_FILE"
