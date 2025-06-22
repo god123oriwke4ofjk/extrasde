@@ -34,17 +34,17 @@ check_sudo_permissions() {
         sudoers_missing=true
     fi
 
-    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/openvpn"; then
-        echo "Passwordless sudo for openvpn is configured." >> "$SUDOERS_LOG"
+    if sudo -n /usr/bin/openvpn --version >/dev/null 2>&1; then
+        echo "Passwordless sudo for openvpn is functional." >> "$SUDOERS_LOG"
     else
-        echo "Error: Passwordless sudo for openvpn is not configured." | tee -a "$SUDOERS_LOG"
+        echo "Error: Passwordless sudo for openvpn is not functional." | tee -a "$SUDOERS_LOG"
         sudoers_missing=true
     fi
 
-    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/killall openvpn"; then
-        echo "Passwordless sudo for killall openvpn is configured." >> "$SUDOERS_LOG"
+    if sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
+        echo "Passwordless sudo for killall openvpn is functional." >> "$SUDOERS_LOG"
     else
-        echo "Error: Passwordless sudo for killall openvpn is not configured." | tee -a "$SUDOERS_LOG"
+        echo "Error: Passwordless sudo for killall openvpn is not functional." | tee -a "$SUDOERS_LOG"
         sudoers_missing=true
     fi
 
@@ -59,9 +59,8 @@ check_sudo_permissions() {
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         fi
-        if ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/openvpn" || \
-           ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/killall openvpn"; then
-            echo "Error: Passwordless sudo still not configured after running install.sh." | tee -a "$SUDOERS_LOG"
+        if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1 || ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
+            echo "Error: Passwordless sudo still not functional after running install.sh." | tee -a "$SUDOERS_LOG"
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
             exit 1
         fi
@@ -71,6 +70,7 @@ check_sudo_permissions() {
         echo "Sudoers permissions are correctly configured." >> "$SUDOERS_LOG"
     fi
 }
+
 update_auth_file() {
     if [[ ! -d "$VPNBOOK_PASS_DIR" ]]; then
         echo "Cloning vpnbook-password repository..."
