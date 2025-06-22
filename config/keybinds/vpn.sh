@@ -13,61 +13,30 @@ INSTALL_SCRIPT="$HOME/Extra/install.sh"
 VPNBOOK_PASS_DIR="$HOME/Extra/config/vpnbook-password"
 VPNBOOK_PASS_FILE="$VPNBOOK_PASS_DIR/vpn_password.txt"
 VPNBOOK_GIT_URL="https://github.com/ERM073/vpnbook-password"
-SUDOERS_LOG="/tmp/vpn_sudoers_check.log"
+INSTALL_LOG="$HOME/.local/lib/hyde/install.log"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-check_sudo_permissions() {
-    local sudoers_missing=false
-    local current_user
-    current_user=$(whoami)
-    echo "Checking sudo permissions for $current_user at $(date)" > "$SUDOERS_LOG"
-    echo "Execution context: $(ps -p $$ -o comm=), Terminal: $TERM, Display: $DISPLAY" >> "$SUDOERS_LOG"
-
-    if [[ -f "/etc/sudoers.d/vpnbook" ]]; then
-        echo "Sudoers file /etc/sudoers.d/vpnbook exists. Contents:" >> "$SUDOERS_LOG"
-        sudo cat /etc/sudoers.d/vpnbook >> "$SUDOERS_LOG" 2>&1
+check_sudoers_log() {
+    if [[ -f "$INSTALL_LOG" ]] && grep -q "CREATED_SUDOERS: /etc/sudoers.d/hyde-vpn" "$INSTALL_LOG"; then
+        echo "Sudoers configuration confirmed via $INSTALL_LOG."
     else
-        echo "Warning: Sudoers file /etc/sudoers.d/vpnbook does not exist." >> "$SUDOERS_LOG"
-        sudoers_missing=true
-    fi
-
-    if sudo -n /usr/bin/openvpn --version >/dev/null 2>&1; then
-        echo "Passwordless sudo for openvpn is functional." >> "$SUDOERS_LOG"
-    else
-        echo "Error: Passwordless sudo for openvpn is not functional." | tee -a "$SUDOERS_LOG"
-        sudoers_missing=true
-    fi
-
-    if sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
-        echo "Passwordless sudo for killall openvpn is functional." >> "$SUDOERS_LOG"
-    else
-        echo "Error: Passwordless sudo for killall openvpn is not functional." | tee -a "$SUDOERS_LOG"
-        sudoers_missing=true
-    fi
-
-    echo "sudo -l output for $current_user:" >> "$SUDOERS_LOG"
-    sudo -n -l -U "$current_user" >> "$SUDOERS_LOG" 2>&1
-
-    if [ "$sudoers_missing" = true ]; then
-        echo "Sudoers configuration issue detected. Running $INSTALL_SCRIPT --sudoers..." | tee -a "$SUDOERS_LOG"
+        echo "Error: Sudoers configuration not found in $INSTALL_LOG. Running $INSTALL_SCRIPT --sudoers..."
         notify-send -u critical -i "$ICON_DIR/error.svg" "Configuring Sudoers" "Running install.sh --sudoers to set up passwordless sudo..."
         if ! bash "$INSTALL_SCRIPT" -outsudo --sudoers; then
-            echo "Error: Failed to run $INSTALL_SCRIPT -outsudo --sudoers." | tee -a "$SUDOERS_LOG"
+            echo "Error: Failed to run $INSTALL_SCRIPT -outsudo --sudoers."
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         fi
-        if ! sudo -n /usr/bin/openvpn --version >/dev/null 2>&1 || ! sudo -n /usr/bin/killall --version >/dev/null 2>&1; then
-            echo "Error: Passwordless sudo still not functional after running install.sh." | tee -a "$SUDOERS_LOG"
-            notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
+        if [[ ! -f "$INSTALL_LOG" ]] || ! grep -q "CREATED_SUDOERS: /etc/sudoers.d/hyde-vpn" "$INSTALL_LOG"; then
+            echo "Error: Sudoers configuration still not confirmed after running install.sh."
+            notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Sudoers configuration not found in $INSTALL_LOG after running install.sh."
             exit 1
         fi
-        echo "Sudoers configured successfully." | tee -a "$SUDOERS_LOG"
+        echo "Sudoers configured successfully."
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "Sudoers Configured" "Passwordless sudo configured successfully."
-    else
-        echo "Sudoers permissions are correctly configured." >> "$SUDOERS_LOG"
     fi
 }
 
@@ -135,7 +104,7 @@ send_connecting_notification() {
         current_time=$(date +%s)
         elapsed=$((current_time - start_time))
         if [[ $elapsed -ge $timeout ]]; then
-            sudo kill "$pid" 2>/dev/null
+            sudo /usr/bin/killall openvpn 2>/dev/null
             notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Connection timed out after 15 seconds."
             exit 1
         fi
@@ -194,31 +163,31 @@ connect_to_server() {
         notify-send -u normal -i "$ICON_DIR/vpn.svg" -r "$NOTIF_ID" "VPN Connected" "Connected to $server_name."
         echo "VPN connected successfully."
     else
-        echo "Error: Failed to connect to VPN." | tee -a "$SUDOERS_LOG"
+        echo "Error: Failed to connect to VPN."
         notify-send -u critical -i "$ICON_DIR/error.svg" -r "$NOTIF_ID" "VPN Connection Failed" "Failed to connect to $server."
         exit 1
     fi
 }
 
 connect_vpn() {
-    check_sudo_permissions
+    check_sudoers_log
     if is_scraper_running; then
-        echo "Error: Credential scraper is running." | tee -a "$SUDOERS_LOG"
+        echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
         exit 1
     fi
     if is_vpn_running; then
-        echo "Error: VPN is already connected." | tee -a "$SUDOERS_LOG"
+        echo "Error: VPN is already connected."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Disconnect the current VPN before connecting to a new one."
         exit 1
     fi
     if [[ ! -d "$SERVERS_DIR" ]]; then
-        echo "Error: Servers directory $SERVERS_DIR not found." | tee -a "$SUDOERS_LOG"
+        echo "Error: Servers directory $SERVERS_DIR not found."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
         exit 1
     fi
     if [[ -z "$1" ]]; then
-        echo "Error: Missing argument for connect. Usage: vpn.sh connect {random|<country>|<country_code>|<server_name>}" | tee -a "$SUDOERS_LOG"
+        echo "Error: Missing argument for connect. Usage: vpn.sh connect {random|<country>|<country_code>|<server_name>}"
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Missing argument for connect. Use random, country, country code, or server name."
         exit 1
     fi
@@ -226,11 +195,11 @@ connect_vpn() {
         local server
         server=$(get_random_server)
         if [[ -z "$server" ]]; then
-            echo "Error: No .ovpn files found in $SERVERS_DIR." | tee -a "$SUDOERS_LOG"
+            echo "Error: No .ovpn files found in $SERVERS_DIR."
             notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
             exit 1
         fi
-        echo "Connecting to VPN using $server..." | tee -a "$SUDOERS_LOG"
+        echo "Connecting to VPN using $server..."
         connect_to_server "$server"
     else
         local country_dir
@@ -239,22 +208,22 @@ connect_vpn() {
             local servers
             servers=$(find "$SERVERS_DIR/$country_dir" -name "*.ovpn")
             if [[ -z "$servers" ]]; then
-                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir." | tee -a "$SUDOERS_LOG"
+                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir."
                 notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No servers found for $country_dir."
                 exit 1
             fi
             local server
             server=$(echo "$servers" | shuf -n 1)
-            echo "Connecting to VPN using $server..." | tee -a "$SUDOERS_LOG"
+            echo "Connecting to VPN using $server..."
             connect_to_server "$server"
         else
             local server
             server=$(find "$SERVERS_DIR" -name "$1" -type f)
             if [[ -n "$server" ]]; then
-                echo "Connecting to VPN using $server..." | tee -a "$SUDOERS_LOG"
+                echo "Connecting to VPN using $server..."
                 connect_to_server "$server"
             else
-                echo "Error: Invalid country, country code, or server name: $1" | tee -a "$SUDOERS_LOG"
+                echo "Error: Invalid country, country code, or server name: $1"
                 notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Invalid country, country code, or server name: $1"
                 exit 1
             fi
@@ -263,38 +232,38 @@ connect_vpn() {
 }
 
 change_vpn() {
-    check_sudo_permissions
+    check_sudoers_log
     if is_scraper_running; then
-        echo "Error: Credential scraper is running." | tee -a "$SUDOERS_LOG"
+        echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
         exit 1
     fi
     if ! is_vpn_running; then
-        echo "Error: No active VPN connection to change." | tee -a "$SUDOERS_LOG"
+        echo "Error: No active VPN connection to change."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No active VPN connection to change."
         exit 1
     fi
     if [[ ! -d "$SERVERS_DIR" ]]; then
-        echo "Error: Servers directory $SERVERS_DIR not found." | tee -a "$SUDOERS_LOG"
+        echo "Error: Servers directory $SERVERS_DIR not found."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
         exit 1
     fi
     if [[ -z "$1" ]]; then
-        echo "Error: Missing argument for change. Usage: vpn.sh change {random|<country>|<country_code>|<server_name>}" | tee -a "$SUDOERS_LOG"
+        echo "Error: Missing argument for change. Usage: vpn.sh change {random|<country>|<country_code>|<server_name>}"
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Missing argument for change. Use random, country, country code, or server name."
         exit 1
     fi
     local current_server
     current_server=$(get_current_server)
-    sudo killall openvpn
+    sudo /usr/bin/killall openvpn
     notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
-    echo "VPN disconnected." | tee -a "$SUDOERS_LOG"
+    echo "VPN disconnected."
     if [[ "$1" == "random" ]]; then
         local server
         while true; do
             server=$(get_random_server)
             if [[ -z "$server" ]]; then
-                echo "Error: No .ovpn files found in $SERVERS_DIR." | tee -a "$SUDOERS_LOG"
+                echo "Error: No .ovpn files found in $SERVERS_DIR."
                 notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
                 exit 1
             fi
@@ -302,7 +271,7 @@ change_vpn() {
                 break
             fi
         done
-        echo "Changing VPN to $server..." | tee -a "$SUDOERS_LOG"
+        echo "Changing VPN to $server..."
         connect_to_server "$server"
     else
         local country_dir
@@ -311,7 +280,7 @@ change_vpn() {
             local servers
             servers=$(find "$SERVERS_DIR/$country_dir" -name "*.ovpn")
             if [[ -z "$servers" ]]; then
-                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir." | tee -a "$SUDOERS_LOG"
+                echo "Error: No .ovpn files found in $SERVERS_DIR/$country_dir."
                 notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No servers found for $country_dir."
                 exit 1
             fi
@@ -324,21 +293,21 @@ change_vpn() {
                     server=$(echo "$servers" | shuf -n 1)
                 fi
             fi
-            echo "Changing VPN to $server..." | tee -a "$SUDOERS_LOG"
+            echo "Changing VPN to $server..."
             connect_to_server "$server"
         else
             local server
             server=$(find "$SERVERS_DIR" -name "$1" -type f)
             if [[ -n "$server" ]]; then
                 if [[ "$server" == "$current_server" ]]; then
-                    echo "Error: Already connected to $1." | tee -a "$SUDOERS_LOG"
+                    echo "Error: Already connected to $1."
                     notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Already connected to $1."
                     exit 1
                 fi
-                echo "Changing VPN to $server..." | tee -a "$SUDOERS_LOG"
+                echo "Changing VPN to $server..."
                 connect_to_server "$server"
             else
-                echo "Error: Invalid country, country code, or server name: $1" | tee -a "$SUDOERS_LOG"
+                echo "Error: Invalid country, country code, or server name: $1"
                 notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Invalid country, country code, or server name: $1"
                 exit 1
             fi
@@ -347,38 +316,38 @@ change_vpn() {
 }
 
 toggle_vpn() {
-    check_sudo_permissions
+    check_sudoers_log
     if is_scraper_running; then
-        echo "Error: Credential scraper is running." | tee -a "$SUDOERS_LOG"
+        echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Please wait until credential scraping is complete."
         exit 1
     fi
     if is_vpn_running; then
-        echo "Disconnecting VPN..." | tee -a "$SUDOERS_LOG"
-        sudo killall openvpn
+        echo "Disconnecting VPN..."
+        sudo /usr/bin/killall openvpn
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
-        echo "VPN disconnected." | tee -a "$SUDOERS_LOG"
+        echo "VPN disconnected."
     else
         connect_vpn random
     fi
 }
 
 disconnect_vpn() {
-    check_sudo_permissions
+    check_sudoers_log
     if is_vpn_running; then
-        echo "Disconnecting VPN..." | tee -a "$SUDOERS_LOG"
-        sudo killall openvpn
+        echo "Disconnecting VPN..."
+        sudo /usr/bin/killall openvpn
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Disconnected" "VPN connection has been terminated."
-        echo "VPN disconnected." | tee -a "$SUDOERS_LOG"
+        echo "VPN disconnected."
     else
-        echo "VPN is not connected." | tee -a "$SUDOERS_LOG"
+        echo "VPN is not connected."
         notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Not Connected" "No active VPN connection."
     fi
 }
 
 list_servers() {
     if [[ ! -d "$SERVERS_DIR" ]]; then
-        echo "Error: Servers directory $SERVERS_DIR not found." | tee -a "$SUDOERS_LOG"
+        echo "Error: Servers directory $SERVERS_DIR not found."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "Servers directory $SERVERS_DIR not found."
         exit 1
     fi
@@ -396,7 +365,7 @@ list_servers() {
         fi
     done
     if [ "$found" = false ]; then
-        echo "No .ovpn files found in $SERVERS_DIR." | tee -a "$SUDOERS_LOG"
+        echo "No .ovpn files found in $SERVERS_DIR."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Error" "No .ovpn files found in $SERVERS_DIR."
         exit 1
     fi
@@ -404,45 +373,45 @@ list_servers() {
 }
 
 setup_vpn() {
-    check_sudo_permissions
+    check_sudoers_log
     if is_scraper_running; then
-        echo "Error: Credential scraper is running." | tee -a "$SUDOERS_LOG"
+        echo "Error: Credential scraper is running."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Please wait until credential scraping is complete."
         exit 1
     fi
-    echo "Checking and installing dependencies..." | tee -a "$SUDOERS_LOG"
+    echo "Checking and installing dependencies..."
     sudo pacman -Syu --noconfirm
     if ! command_exists openvpn; then
-        echo "Installing openvpn..." | tee -a "$SUDOERS_LOG"
+        echo "Installing openvpn..."
         sudo pacman -S --noconfirm openvpn
     else
-        echo "openvpn is already installed." | tee -a "$SUDOERS_LOG"
+        echo "openvpn is already installed."
     fi
     if ! command_exists nm-openvpn; then
-        echo "Installing networkmanager-openvpn..." | tee -a "$SUDOERS_LOG"
+        echo "Installing networkmanager-openvpn..."
         sudo pacman -S --noconfirm networkmanager-openvpn
     else
-        echo "networkmanager-openvpn is already installed." | tee -a "$SUDOERS_LOG"
+        echo "networkmanager-openvpn is already installed."
     fi
     if ! command_exists notify-send; then
-        echo "Installing libnotify for notifications..." | tee -a "$SUDOERS_LOG"
+        echo "Installing libnotify for notifications..."
         sudo pacman -S --noconfirm libnotify
     else
-        echo "libnotify is already installed." | tee -a "$SUDOERS_LOG"
+        echo "libnotify is already installed."
     fi
     update_auth_file
     mkdir -p "$SERVERS_DIR"
-    echo "Synchronizing servers from $SOURCE_SERVERS_DIR to $SERVERS_DIR..." | tee -a "$SUDOERS_LOG"
+    echo "Synchronizing servers from $SOURCE_SERVERS_DIR to $SERVERS_DIR..."
     rm -rf "$SERVERS_DIR"/*
     cp -r "$SOURCE_SERVERS_DIR"/* "$SERVERS_DIR"/
     if [[ $? -eq 0 ]]; then
-        echo "Servers synchronized successfully." | tee -a "$SUDOERS_LOG"
+        echo "Servers synchronized successfully."
     else
-        echo "Error: Failed to synchronize servers from $SOURCE_SERVERS_DIR." | tee -a "$SUDOERS_LOG"
+        echo "Error: Failed to synchronize servers from $SOURCE_SERVERS_DIR."
         notify-send -u critical -i "$ICON_DIR/error.svg" "VPN Setup Error" "Failed to synchronize servers from $SOURCE_SERVERS_DIR."
         exit 1
     fi
-    echo "Setup complete." | tee -a "$SUDOERS_LOG"
+    echo "Setup complete."
     notify-send -u normal -i "$ICON_DIR/vpn.svg" "VPN Setup Complete" "Dependencies and servers configured successfully."
 }
 
