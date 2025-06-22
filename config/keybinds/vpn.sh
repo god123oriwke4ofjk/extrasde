@@ -26,20 +26,6 @@ check_sudo_permissions() {
     echo "Checking sudo permissions for $current_user at $(date)" > "$SUDOERS_LOG"
     echo "Execution context: $(ps -p $$ -o comm=), Terminal: $TERM, Display: $DISPLAY" >> "$SUDOERS_LOG"
 
-    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD.*openvpn"; then
-        echo "Passwordless sudo for openvpn is configured." >> "$SUDOERS_LOG"
-    else
-        echo "Error: Passwordless sudo for openvpn is not configured." | tee -a "$SUDOERS_LOG"
-        sudoers_missing=true
-    fi
-
-    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD.*killall"; then
-        echo "Passwordless sudo for killall is configured." >> "$SUDOERS_LOG"
-    else
-        echo "Error: Passwordless sudo for killall is not configured." | tee -a "$SUDOERS_LOG"
-        sudoers_missing=true
-    fi
-
     if [[ -f "/etc/sudoers.d/vpnbook" ]]; then
         echo "Sudoers file /etc/sudoers.d/vpnbook exists. Contents:" >> "$SUDOERS_LOG"
         sudo cat /etc/sudoers.d/vpnbook >> "$SUDOERS_LOG" 2>&1
@@ -47,6 +33,23 @@ check_sudo_permissions() {
         echo "Warning: Sudoers file /etc/sudoers.d/vpnbook does not exist." >> "$SUDOERS_LOG"
         sudoers_missing=true
     fi
+
+    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/openvpn"; then
+        echo "Passwordless sudo for openvpn is configured." >> "$SUDOERS_LOG"
+    else
+        echo "Error: Passwordless sudo for openvpn is not configured." | tee -a "$SUDOERS_LOG"
+        sudoers_missing=true
+    fi
+
+    if sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/killall openvpn"; then
+        echo "Passwordless sudo for killall openvpn is configured." >> "$SUDOERS_LOG"
+    else
+        echo "Error: Passwordless sudo for killall openvpn is not configured." | tee -a "$SUDOERS_LOG"
+        sudoers_missing=true
+    fi
+
+    echo "sudo -l output for $current_user:" >> "$SUDOERS_LOG"
+    sudo -n -l -U "$current_user" >> "$SUDOERS_LOG" 2>&1
 
     if [ "$sudoers_missing" = true ]; then
         echo "Sudoers configuration issue detected. Running $INSTALL_SCRIPT --sudoers..." | tee -a "$SUDOERS_LOG"
@@ -56,8 +59,8 @@ check_sudo_permissions() {
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Failed to configure passwordless sudo."
             exit 1
         fi
-        if ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD.*openvpn" || \
-           ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD.*killall"; then
+        if ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/openvpn" || \
+           ! sudo -n -l -U "$current_user" | grep -q "NOPASSWD: /usr/bin/killall openvpn"; then
             echo "Error: Passwordless sudo still not configured after running install.sh." | tee -a "$SUDOERS_LOG"
             notify-send -u critical -i "$ICON_DIR/error.svg" "Sudoers Setup Failed" "Passwordless sudo still not configured after running install.sh."
             exit 1
@@ -68,7 +71,6 @@ check_sudo_permissions() {
         echo "Sudoers permissions are correctly configured." >> "$SUDOERS_LOG"
     fi
 }
-
 update_auth_file() {
     if [[ ! -d "$VPNBOOK_PASS_DIR" ]]; then
         echo "Cloning vpnbook-password repository..."
