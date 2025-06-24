@@ -1,12 +1,18 @@
 #!/bin/bash
 
+if [ -d "$HOME/HyDE" ]; then
+    HYDE_HOME="$HOME/HyDE"
+else
+    HYDE_HOME="$HOME/Hyde"
+fi
+
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 SCRIPT_DIR="/home/$USER/.local/lib/hyde"
 ICON_DIR="/home/$USER/.local/share/icons/Wallbash-Icon"
 KEYBINDINGS_CONF="/home/$USER/.config/hypr/keybindings.conf"
 TEMP_FOLDER="/tmp/updateTemp"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-CONFIG_DIR="$HOME/HyDE/Configs"
+CONFIG_DIR="$HYDE_HOME/Configs"
 EXTRA_VPN_SCRIPT="$HOME/Extra/config/keybinds/vpn.sh"
 SCRIPT_PATH="$HOME/Extra/update.sh"
 NEW_SCRIPT_PATH="$HOME/Extra/update.sh.new"
@@ -122,44 +128,44 @@ check_repo_updates() {
 check_self_update() {
     local script_path="$SCRIPT_PATH"
     local new_script_path="$NEW_SCRIPT_PATH"
-    
+
     if [ ! -f "$script_path" ]; then
         echo "Error: Current script $script_path not found."
         return 1
     fi
-    
+
     local current_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
-    
+
     if [ -f "$new_script_path" ]; then
         echo "Error: $new_script_path already exists, please remove or rename it."
         return 1
     fi
-    
+
     cp "$script_path" "$new_script_path" 2>/dev/null || {
         echo "Error: Failed to copy $script_path to $new_script_path for comparison."
         return 1
     }
-    
+
     cd "$HOME/Extra" || {
         echo "Error: Could not navigate to $HOME/Extra."
         return 1
     }
-    
+
     if ! git fetch origin 2>/dev/null; then
         echo "Error: Failed to fetch updates for Extra repository."
         rm -f "$new_script_path"
         return 1
     fi
-    
+
     LOCAL=$(git rev-parse HEAD)
     REMOTE=$(git rev-parse @{u} 2>/dev/null)
-    
+
     if [ "$LOCAL" = "$REMOTE" ]; then
         echo "Extra repository is up to date, no self-update check needed."
         rm -f "$new_script_path"
         return 0
     fi
-    
+
     git pull 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "Extra repository updated successfully."
@@ -204,7 +210,7 @@ case $? in
     1) extra_updated=1 ;;
     2) echo "Skipping Extra repo update due to access issues." ;;
 esac
-check_repo_updates "$HOME/HyDE" "git pull origin master" || hyde_updated=1
+check_repo_updates "$HYDE_HOME" "git pull origin master" || hyde_updated=1
 
 if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ] && [ $FORCE_UPDATE -eq 0 ]; then
     echo "Both repositories are up to date. There's nothing to update."
@@ -222,15 +228,15 @@ mv "$LOG_FILE" "$TEMP_FOLDER/install.log" 2>/dev/null || echo "Warning: Failed t
 
 if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
     echo "Found modified keybinds file, setting it up for update."
-    cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/tmp/cp_error
+    cp "$HYDE_HOME/Configs/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/tmp/cp_error
     if grep -q "cannot stat" /tmp/cp_error; then
         if [ ! -f "$HOME/.config/hypr/keybindings.conf" ]; then
             if [ -f "$HOME/.config/hypr/keybindings.conf.save" ]; then
                 cp "$HOME/.config/hypr/keybindings.conf.save" "$HOME/.config/hypr/keybindings.conf"
-                echo "Restored $HOME/.config/hypr/keybindings.conf from $HOME/.config/hypr/keybindings.conf.save"
+                echo "Restored $HOME/.config/hypr/keybindings.conf from .save"
             else
-                cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
-                echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+                cp "$HYDE_HOME/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
+                echo "Copied fallback keybindings from HYDE_HOME"
             fi
         fi
     fi
@@ -238,21 +244,21 @@ fi
 
 if [ $extra_updated -eq 1 ] || [ $hyde_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
     echo "Updating hyde..."
-    cd $HOME/HyDE/Scripts
+    cd "$HYDE_HOME/Scripts"
     ./install.sh -r
 fi
 
-mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null || echo "Warning: Failed to move $TEMP_FOLDER/install.log back to $LOG_FILE"
+mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null || echo "Warning: Failed to restore install.log"
 
 if [ $vpn_script_existed -eq 1 ] || [ $extra_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
     if [ ! -f "$SCRIPT_DIR/vpn.sh" ]; then
         if [ -f "$EXTRA_VPN_SCRIPT" ]; then
             cp "$EXTRA_VPN_SCRIPT" "$SCRIPT_DIR/vpn.sh"
             chmod +x "$SCRIPT_DIR/vpn.sh"
-            echo "Moved $EXTRA_VPN_SCRIPT to $SCRIPT_DIR/vpn.sh and made it executable."
+            echo "Moved vpn.sh and made it executable."
             echo "MOVED_SCRIPT: vpn.sh -> $SCRIPT_DIR/vpn.sh" >> "$LOG_FILE"
         else
-            echo "Warning: $EXTRA_VPN_SCRIPT not found, cannot move to $SCRIPT_DIR/vpn.sh."
+            echo "Warning: $EXTRA_VPN_SCRIPT not found, cannot restore vpn.sh."
         fi
     else
         echo "$SCRIPT_DIR/vpn.sh still exists after update, no need to move."
@@ -260,29 +266,29 @@ if [ $vpn_script_existed -eq 1 ] || [ $extra_updated -eq 1 ] || [ $FORCE_UPDATE 
 fi
 
 if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/dev/null; then
-    echo "Changed keybind.conf, updating it using install.sh --keybind"
+    echo "Changed keybind.conf, updating..."
     mkdir -p "$HOME/.config/hypr"
     if [ -f "$TEMP_FOLDER/keybindings.conf" ]; then
         cp "$TEMP_FOLDER/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
-        echo "Copied $TEMP_FOLDER/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+        echo "Updated keybindings from temp."
     else
-        cp "$HOME/HyDE/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
-        echo "Copied $HOME/HyDE/Configs/.config/hypr/keybindings.conf to $HOME/.config/hypr/keybindings.conf"
+        cp "$HYDE_HOME/Configs/.config/hypr/keybindings.conf" "$HOME/.config/hypr/keybindings.conf"
+        echo "Updated keybindings from HYDE_HOME fallback."
     fi
     if grep -q "MODIFIED_KEYBINDINGS:" "$LOG_FILE"; then
-        cd $HOME/Extra
+        cd "$HOME/Extra"
         mkdir -p "$BACKUP_DIR"
         if [ -f "$KEYBINDINGS_CONF" ]; then
             find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete
             cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak"
             echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
-            echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
+            echo "Backed up keybindings.conf"
         fi
         bash "$HOME/Extra/install.sh" --keybind || {
             echo "Error: Failed to run install.sh --keybind"
             restore_files
         }
-        echo "Ran install.sh --keybind to update keybindings"
+        echo "Ran install.sh --keybind"
         echo "MODIFIED_KEYBINDINGS: Updated via install.sh --keybind" >> "$LOG_FILE"
     fi
 fi
