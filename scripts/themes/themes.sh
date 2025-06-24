@@ -27,32 +27,33 @@ done
 echo "Setting up custom wallpapers..."
 
 move_wallpapers() {
-  src="$WALLPAPER_DIR/$1"
-  dest="$THEME_DIR/$2"
+  local src_folder="$WALLPAPER_DIR/$1"
+  local theme_folder="$THEME_DIR/$2"
+  local dest_folder="$theme_folder/wallpapers"
+  local extra_folder="$dest_folder/Extra"
 
-  if [[ ! -d "$src" ]]; then
-    echo "Source not found: $src"
+  if [[ ! -d "$src_folder" ]]; then
+    echo "Source not found: $src_folder"
     return
   fi
 
-  echo "Getting wallpapers for $2"
+  if [[ ! -d "$dest_folder" ]]; then
+    echo "Destination wallpapers folder does not exist: $dest_folder"
+    return
+  fi
+
+  mkdir -p "$extra_folder"
+
+  echo "Copying wallpapers from $src_folder to $extra_folder (excluding already existing ones in $dest_folder)..."
 
   shopt -s nullglob
-  files=("$src"/*)
-  if [[ ${#files[@]} -eq 0 ]]; then
-    echo "No wallpapers to copy in: $src"
-    return
-  fi
-
-  mkdir -p "$dest"  
-
-  for wp in "${files[@]}"; do
-    name=$(basename "$wp")
-    if [[ ! -e "$dest/$name" ]]; then
-      cp "$wp" "$dest/"
-      echo "Copied: $name"
+  for src_file in "$src_folder"/*; do
+    filename=$(basename "$src_file")
+    if [[ ! -e "$dest_folder/$filename" ]]; then
+      cp "$src_file" "$extra_folder/"
+      echo "Copied: $filename"
     else
-      echo "Skipped (already exists): $name"
+      echo "Skipped (already exists in main): $filename"
     fi
   done
   shopt -u nullglob
