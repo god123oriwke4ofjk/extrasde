@@ -11,6 +11,7 @@ declare -A THEMES=(
   ["Obsidian-Purple"]="https://github.com/amit-0i/Obsidian-Purple"
   ["One Dark"]="https://github.com/RAprogramm/HyDe-Themes/tree/One-Dark"
   ["Virtual-Witches"]="https://github.com/RAprogramm/HyDe-Themes/tree/Virtual-Witches"
+  ["BlueSky"]="https://github.com/RAprogramm/HyDe-Themes/tree/BlueSky"
 )
 
 echo "Checking and importing themes..."
@@ -68,6 +69,8 @@ declare -A WALLPAPER_MAP=(
   ["graphite-mono"]="Graphite Mono"
   ["obsidian-purple"]="Obsidian-Purple"
   ["catpuccin-latte"]="Catppuccin Latte"
+  ["blue-sky"]="BlueSky"
+  ["catpucin-mocha"]="Catppuccin Mocha"
 )
 
 for src in "${!WALLPAPER_MAP[@]}"; do
