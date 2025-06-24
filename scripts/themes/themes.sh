@@ -39,6 +39,11 @@ if [ ! -d "$HOME/.config/hyde/themes/One Dark" ]; then
   echo "Importing One Dark..."
   hydectl theme import --name "One Dark" --url https://github.com/RAprogramm/HyDe-Themes/tree/One-Dark
 else 
+
+if [ ! -d "$HOME/.config/hyde/themes/Virtual-Witches" ]; then
+  echo "Importing Virtual Witches..."
+  hydectl theme import --name "One Dark" --url https://github.com/RAprogramm/HyDe-Themes/tree/One-Dark
+else 
   echo "Skipped One Dark, already exists."
 
 echo "Finished setting up themes"
