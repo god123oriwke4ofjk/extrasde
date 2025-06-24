@@ -46,7 +46,7 @@ declare -A WALLPAPER_MAP=(
   ["oxo-carbon"]="Oxo Carbon"
   ["graphite-mono"]="Graphite Mono"
   ["obsidian-purple"]="Obsidian-Purple"
-  ["catpuccin-latte"]="Catpuccin Latte"
+  ["catpuccin-latte"]="Catppuccin Latte"
 )
 
 for src in "${!WALLPAPER_MAP[@]}"; do
