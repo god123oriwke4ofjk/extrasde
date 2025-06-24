@@ -30,12 +30,32 @@ move_wallpapers() {
   src="$WALLPAPER_DIR/$1"
   dest="$THEME_DIR/$2"
 
-  [[ ! -d "$src" ]] && echo "Source not found: $src" && return
+  if [[ ! -d "$src" ]]; then
+    echo "Source not found: $src"
+    return
+  fi
 
   echo "Getting wallpapers for $2"
-  for wp in "$src"/*; do
-    [[ ! -e "$dest/$(basename "$wp")" ]] && mv "$wp" "$dest/" && echo "Moved: $(basename "$wp")" || echo "Skipped: $(basename "$wp")"
+
+  shopt -s nullglob
+  files=("$src"/*)
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No wallpapers to copy in: $src"
+    return
+  fi
+
+  mkdir -p "$dest"  
+
+  for wp in "${files[@]}"; do
+    name=$(basename "$wp")
+    if [[ ! -e "$dest/$name" ]]; then
+      cp "$wp" "$dest/"
+      echo "Copied: $name"
+    else
+      echo "Skipped (already exists): $name"
+    fi
   done
+  shopt -u nullglob
 }
 
 declare -A WALLPAPER_MAP=(
