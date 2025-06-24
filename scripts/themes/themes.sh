@@ -69,7 +69,7 @@ declare -A WALLPAPER_MAP=(
   ["graphite-mono"]="Graphite Mono"
   ["obsidian-purple"]="Obsidian-Purple"
   ["catpuccin-latte"]="Catppuccin Latte"
-  ["blue-sky"]="BlueSky"
+  ["bluesky"]="BlueSky"
   ["catpucin-mocha"]="Catppuccin Mocha"
 )
 
