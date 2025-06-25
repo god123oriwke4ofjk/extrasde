@@ -70,7 +70,7 @@ sudo_yad() {
     fi
 }
 [ "$EUID" -eq "0" ] && { echo "Error: This script must not be run as root."; exit 1; }
-if! grep -qi "arch" /etc/os-release; then
+if ! grep -qi "arch" /etc/os-release; then
     echo "Error: This script is designed for Arch Linux."
     exit 1
 fi
