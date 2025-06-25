@@ -214,7 +214,7 @@ fi
 sudo pacman -Syy --noconfirm
 
 echo "Installing pacman packages"
-PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite"
+PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite"
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
