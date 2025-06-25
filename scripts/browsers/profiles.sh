@@ -11,7 +11,8 @@ PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 ZEN_PROFILE_DIR="$HOME/.zen"
 ZEN_PROFILE_INI="$ZEN_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
-CONFIG_DIR="$HOME/Extra/config"  # <--- modified path
+CONFIG_DIR="$HOME/Extra/config"  
+USERPREFS_CONF="$HOME/.config/hypr/hyprland.conf" 
 
 NO_DYNAMIC=false
 
