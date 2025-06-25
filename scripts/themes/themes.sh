@@ -72,6 +72,7 @@ declare -A WALLPAPER_MAP=(
   ["bluesky"]="BlueSky"
   ["catpucin-mocha"]="Catppuccin Mocha"
   ["rose-pine"]="Rosé Pine"
+  ["gruvbox-retro"]="Gruvbox Retro"
 )
 
 for src in "${!WALLPAPER_MAP[@]}"; do
