@@ -230,7 +230,7 @@ for pkg in $PACMAN_PACKAGES; do
 done
 
 echo "Installing yay packages"
-YAY_PACKAGES="qemu-full hyprshell hypr-zoom"
+YAY_PACKAGES="qemu-full hyprshell-debug hyprshell hypr-zoom"
 if $NETFLIX; then
     YAY_PACKAGES="$YAY_PACKAGES brave-bin netflix"
 fi
