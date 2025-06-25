@@ -3,14 +3,14 @@ USER=${USER:-$(whoami)}
 [ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
-BRAVE_DESKTOP_FILE="brave-browser.desktop"
+BRAVE_DESKTOP_FILE="com.brave.Browser.desktop"
 VESKTOP_DESKTOP_FILE="dev.vencord.Vesktop.desktop"
-BRAVE_SOURCE_DIR="/usr/share/applications"
+BRAVE_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
 EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
-EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
+EXTENSION_DIR="$HOME/.var/app/com.brave.Browser/config/brave-extensions/netflix-1080p"
 EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
 VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
@@ -32,7 +32,7 @@ help_function() {
     echo "Options:"
     echo "  osu           Install osu! via osu-winello"
     echo "  lts           Install Linux LTS kernel and headers"
-    echo "  -netflix      Install brave-bin and Netflix 1080p extension"
+    echo "  -netflix      Install Brave via Flatpak and Netflix 1080p extension"
     echo "  --noclip      Skip GPU Screen Recorder installation and configuration"
     echo "  osuonly       Install only osu! and skip all other installations"
     echo "  -hyprshell    Install and configure hyprshell only"
@@ -42,7 +42,7 @@ help_function() {
 for arg in "$@"; do
     case "$arg" in
         osu) INSTALL_OSU=true ;;
-        lts) INSTALL_LTS=true ;;
+ lts) INSTALL_LTS=true ;;
         -netflix) NETFLIX=true ;;
         -noclip) NOCLIP=true ;;
         -osuonly) OSU_ONLY=true ;;
@@ -219,7 +219,7 @@ for pkg in $PACMAN_PACKAGES; do
     fi
 done
 echo "Installing yay packages"
-YAY_PACKAGES="qemu-full hyprshell-debug hyprshell hypr-zoom brave-bin"
+YAY_PACKAGES="qemu-full hyprshell-debug hyprshell"
 if $NETFLIX; then
     YAY_PACKAGES="$YAY_PACKAGES netflix"
 fi
@@ -256,6 +256,37 @@ if $INSTALL_OSU; then
 else
     echo "Skipping: osu installation (osu parameter not provided)"
 fi
+if ! command -v flatpak >/dev/null 2>&1; then
+    sudo_yad pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
+    echo "INSTALLED_PACKAGE: flatpak" >> "$LOG_FILE"
+    echo "Installed flatpak"
+else
+    echo "Skipping: flatpak already installed"
+fi
+if ! flatpak --user remotes | grep -q flathub; then
+    flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo || { echo "Error: Failed to add flathub repository"; exit 1; }
+    echo "ADDED_FLATHUB: flathub" >> "$LOG_FILE"
+    echo "Added flathub repository"
+else
+    echo "Skipping: flathub repository already added"
+fi
+FLATPAK_PACKAGES=("dev.vencord.Vesktop" "org.vinegarhq.Sober" "com.brave.Browser")
+if [ "$NOCLIP" = false ]; then
+    FLATPAK_PACKAGES+=("com.dec05eba.gpu_screen_recorder")
+fi
+for pkg in "${FLATPAK_PACKAGES[@]}"; do
+    if ! flatpak list | grep -q "$pkg"; then
+        if [ "$pkg" = "com.dec05eba.gpu_screen_recorder" ]; then
+            flatpak install --system -y com.dec05eba.gpu_screen_recorder || { echo "Error: Failed to install GPU SCREEN RECORDER"; exit 1; }
+        else
+            flatpak install --user -y flathub "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        fi
+        echo "INSTALLED_FLATPAK: $pkg" >> "$LOG_FILE"
+        echo "Installed $pkg"
+    else
+        echo "Skipping: $pkg already installed"
+    fi
+done
 if $NETFLIX; then
     [ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
     mkdir -p "$USER_DIR" || { echo "Error: Failed to create $USER_DIR"; exit 1; }
@@ -320,7 +351,7 @@ if $NETFLIX; then
         grep "^Exec=" "$USER_DIR/$BRAVE_DESKTOP_FILE"
     fi
 else
-    echo "Skipping: Netflix-related setup (brave-bin and extension) not performed (-netflix parameter not provided)"
+    echo "Skipping: Netflix-related setup (Brave and extension) not performed (-netflix parameter not provided)"
 fi
 echo "Setting up steam"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
@@ -367,37 +398,6 @@ EOF
     echo "Default Steam Play configuration created. Will apply after first login."
 fi
 echo "Finished setting up steam"
-if ! command -v flatpak >/dev/null 2>&1; then
-    sudo_yad pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
-    echo "INSTALLED_PACKAGE: flatpak" >> "$LOG_FILE"
-    echo "Installed flatpak"
-else
-    echo "Skipping: flatpak already installed"
-fi
-if ! flatpak --user remotes | grep -q flathub; then
-    flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo || { echo "Error: Failed to add flathub repository"; exit 1; }
-    echo "ADDED_FLATHUB: flathub" >> "$LOG_FILE"
-    echo "Added flathub repository"
-else
-    echo "Skipping: flathub repository already added"
-fi
-FLATPAK_PACKAGES=("dev.vencord.Vesktop" "org.vinegarhq.Sober")
-if [ "$NOCLIP" = false ]; then
-    FLATPAK_PACKAGES+=("com.dec05eba.gpu_screen_recorder")
-fi
-for pkg in "${FLATPAK_PACKAGES[@]}"; do
-    if ! flatpak list | grep -q "$pkg"; then
-        if [ "$pkg" = "com.dec05eba.gpu_screen_recorder" ]; then
-            flatpak install --system -y com.dec05eba.gpu_screen_recorder || { echo "Error: Failed to install GPU SCREEN RECORDER"; exit 1; }
-        else
-            flatpak install --user -y flathub "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
-        fi
-        echo "INSTALLED_FLATPAK: $pkg" >> "$LOG_FILE"
-        echo "Installed $pkg"
-    else
-        echo "Skipping: $pkg already installed"
-    fi
-done
 if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
     sudo_yad ydotool &
     echo "Generating gpu-screen-recorder config files"
