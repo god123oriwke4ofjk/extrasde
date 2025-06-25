@@ -10,8 +10,8 @@ declare -A THEMES=(
   ["Vanta Black"]="https://github.com/rishav12s/Vanta-Black"
   ["Obsidian-Purple"]="https://github.com/amit-0i/Obsidian-Purple"
   ["One Dark"]="https://github.com/RAprogramm/HyDe-Themes/tree/One-Dark"
-  ["Virtual-Witches"]="https://github.com/RAprogramm/HyDe-Themes/tree/Virtual-Witches"
-  ["BlueSky"]="https://github.com/RAprogramm/HyDe-Themes/tree/BlueSky"
+  ["Virtual-Witches"]="https://github.com/luqvic/Virtual-Witches"
+  ["BlueSky"]="https://github.com/richen604/BlueSky"
 )
 
 echo "Checking and importing themes..."
