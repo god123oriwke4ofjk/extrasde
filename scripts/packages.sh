@@ -206,34 +206,59 @@ fi
 sudo_yad pacman -Syy --noconfirm
 echo "Installing pacman packages"
 PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite spotify"
+DIRECT_PACMAN_PACKAGES="spotify"
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
 for pkg in $PACMAN_PACKAGES; do
-    if ! pacman -Qq | grep -Fxq "$pkg"; then
-        sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
-        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
-        echo "Installed $pkg"
+    if echo "$DIRECT_PACMAN_PACKAGES" | grep -wFxq "$pkg"; then
+        if ! pacman -Qq | grep -Fxq "$pkg"; then
+            sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+            echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+            echo "Installed $pkg"
+        else
+            echo "Skipping: $pkg already installed"
+        fi
     else
-        echo "Skipping: $pkg already installed"
+        if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
+            sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+            echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+            echo "Installed $pkg"
+        else
+            echo "Skipping: $pkg already installed"
+        fi
     fi
 done
 echo "Installing yay packages"
 YAY_PACKAGES="qemu-full hyprshell-debug hyprshell"
+DIRECT_YAY_PACKAGES="hyprshell" 
 if $NETFLIX; then
     YAY_PACKAGES="$YAY_PACKAGES netflix"
 fi
 hyprshell_installed=false
 for pkg in $YAY_PACKAGES; do
-    if ! yay -Qs "$pkg" >/dev/null 2>&1; then
-        if [ "$pkg" = "hyprshell" ]; then
-          hyprshell_installed=true
+    if echo "$DIRECT_YAY_PACKAGES" | grep -wFxq "$pkg"; then
+        if ! yay -Qq | grep -Fxq "$pkg"; then
+            if [ "$pkg" = "hyprshell" ]; then
+                hyprshell_installed=true
+            fi
+            yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+            echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+            echo "Installed $pkg"
+        else
+            echo "Skipping: $pkg already installed"
         fi
-        yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
-        echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
-        echo "Installed $pkg"
     else
-        echo "Skipping: $pkg already installed"
+        if ! yay -Qs "$pkg" >/dev/null 2>&1; then
+            if [ "$pkg" = "hyprshell" ]; then
+                hyprshell_installed=true
+            fi
+            yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+            echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
+            echo "Installed $pkg"
+        else
+            echo "Skipping: $pkg already installed"
+        fi
     fi
 done
 if [ "$hyprshell_installed" = "true" ]; then
