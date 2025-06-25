@@ -230,11 +230,12 @@ for pkg in $PACMAN_PACKAGES; do
 done
 
 echo "Installing yay packages"
-YAY_PACKAGES="qemu-full hyprshell-debug hyprshell hypr-zoom"
+YAY_PACKAGES="qemu-full hyprshell-debug hyprshell hypr-zoom brave-bin"
 if $NETFLIX; then
-    YAY_PACKAGES="$YAY_PACKAGES brave-bin netflix"
+    YAY_PACKAGES="$YAY_PACKAGES netflix"
 fi
 
+hyprshell_installed=false
 for pkg in $YAY_PACKAGES; do
     if ! yay -Qs "$pkg" >/dev/null 2>&1; then
         yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
@@ -243,9 +244,14 @@ for pkg in $YAY_PACKAGES; do
     else
         echo "Skipping: $pkg already installed"
     fi
+    if [ "$pkg" = "hyprshell" ]; then
+      hyprshell_installed=true
+    fi
 done
 
-setup_hyprshell
+if [ "$hyprshell_installed" = "true" ]; then
+  setup_hyprshell
+fi
 
 if $INSTALL_OSU; then
     if [[ ! -d "$HOME/.local/share/osu-wine" ]]; then
