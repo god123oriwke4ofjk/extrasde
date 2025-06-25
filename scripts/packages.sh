@@ -43,7 +43,6 @@ OSU_ONLY=false
 HYPRSHELL_ONLY=false
 USE_YAD_SUDO=false
 
-# Parse command-line arguments
 for arg in "$@"; do
     case "$arg" in
         osu) INSTALL_OSU=true ;;
@@ -58,31 +57,25 @@ for arg in "$@"; do
     esac
 done
 
-# Check if script is run as root
 [ "$EUID" -eq 0" ] && { echo "Error: This script must not be run as root."; exit 1; }
 
-# Check if system is Arch Linux
 if! grep -qi "arch" /etc/os-release; then
     echo "Error: This script is designed for Arch Linux."
     exit 1
 fi
 
-# Check for pacman
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 
-# Check for internet connection
 ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || {
     echo "Error: No internet connection."
     exit 1
 }
 
-# Create necessary directories and log file
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO" >> "$LOG_FILE"
 
-# Function to set up hyprshell
 setup_hyprshell() {
     echo "Installing hyprshell"
     if yay -Ss ^hyprshell$ | grep -q ^hyprshell$; then
@@ -167,7 +160,6 @@ EOF
     fi
 }
 
-# Install yay if not present
 if ! command -v yay >/dev/null 2>&1; then
     sudo_yad pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
     git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
@@ -181,7 +173,6 @@ else
     echo "Skipping: yay already installed"
 fi
 
-# Install yad if not present (required for -outsudo)
 if [[ "$USE_YAD_SUDO" == true ]]; then
     if ! command -v yad >/dev/null 2>&1; then
         sudo_yad pacman -Syu --noconfirm yad || { echo "Error: Failed to install yad"; exit 1; }
@@ -216,7 +207,6 @@ if $OSU_ONLY; then
     exit 0
 fi
 
-# Update pacman
 sudo_yad pacman -Syy --noconfirm
 
 echo "Installing pacman packages"
