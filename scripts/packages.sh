@@ -1,8 +1,20 @@
 #!/bin/bash
 
+sudo_yad() {
+    if [[ "$USE_YAD_SUDO" == true ]]; then
+        yad --title="Sudo Password Required" --window-icon=system-lock-screen \
+            --text="Enter your sudo password to continue:" \
+            --entry --hide-text --width=300 --center \
+            --button="OK:0" --button="Cancel:1" | sudo -S -v "$@"
+        return $?
+    else
+        sudo "$@"
+        return $?
+    fi
+}
+
 USER=${USER:-$(whoami)}
 [ -z "$USER" ] && { echo "Error: Could not determine username."; exit 1; }
-
 LOG_FILE="/home/$USER/.local/lib/hyde/install.log"
 BACKUP_DIR="/home/$USER/.local/lib/hyde/backups"
 BRAVE_DESKTOP_FILE="brave-browser.desktop"
@@ -11,40 +23,27 @@ BRAVE_SOURCE_DIR="/usr/share/applications"
 USER_DIR="$HOME/.local/share/applications"
 VESKTOP_SOURCE_DIR="$HOME/.local/share/flatpak/exports/share/applications"
 ARGUMENT="--enable-blink-features=MiddleClickAutoscroll"
-EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.32.0.crx"
+EXTENSION_URL="https://github.com/jangxx/netflix-1080p/releases/download/v1.32.0/netflix-1080p-1.00.crx"
 EXTENSION_DIR="$HOME/.config/brave-extensions/netflix-1080p"
 EXTENSION_ID="mdlbikciddolbenfkgggdegphnhmnfcg"
 VESKTOP_CONFIG_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings.json"
 VESKTOP_CSS_FILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/quickCss.css"
-VESKTOP_VENCORD_SETTINGS="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
+VESKTOP_VENCORD_PROFILE="/home/$USER/.var/app/dev.vencord.Vesktop/config/vesktop/settings/settings.json"
 STEAM_CONFIG="/home/$USER/.steam/steam/userdata/*/config/localconfig.vdf"
-
 VESKTOP_PLUGINS_TO_ENABLE=(
     "ImageZoom"
     "MemberCount"
     "SpotifyCrack"
 )
-
 INSTALL_OSU=false
 INSTALL_LTS=false
 NETFLIX=false
 NOCLIP=false
 OSU_ONLY=false
 HYPRSHELL_ONLY=false
+USE_YAD_SUDO=false
 
-help_function() {
-    echo "Usage: $0 [options]"
-    echo "Options:"
-    echo "  osu           Install osu! via osu-winello"
-    echo "  lts           Install Linux LTS kernel and headers"
-    echo "  -netflix      Install brave-bin and Netflix 1080p extension"
-    echo "  --noclip      Skip GPU Screen Recorder installation and configuration"
-    echo "  osuonly       Install only osu! and skip all other installations"
-    echo "  -hyprshell    Install and configure hyprshell only"
-    echo "  -h, -help     Display this help message and exit"
-    exit 0
-}
-
+# Parse command-line arguments
 for arg in "$@"; do
     case "$arg" in
         osu) INSTALL_OSU=true ;;
@@ -52,28 +51,38 @@ for arg in "$@"; do
         -netflix) NETFLIX=true ;;
         --noclip) NOCLIP=true ;;
         osuonly) OSU_ONLY=true ;;
-        -hyprshell) HYPRSHELL_ONLY=true ;;
+        -hyprshell) HYPRSHALL_ONLY=true ;;
+        -outsudo) USE_YAD_SUDO=true ;;
         -h|-help) help_function ;;
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
 done
 
-[ "$EUID" -eq 0 ] && { echo "Error: This script must not be run as root."; exit 1; }
+# Check if script is run as root
+[ "$EUID" -eq 0" ] && { echo "Error: This script must not be run as root."; exit 1; }
 
-if ! grep -qi "arch" /etc/os-release; then
+# Check if system is Arch Linux
+if! grep -qi "arch" /etc/os-release; then
     echo "Error: This script is designed for Arch Linux."
     exit 1
 fi
 
+# Check for pacman
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 
-ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
+# Check for internet connection
+ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || {
+    echo "Error: No internet connection."
+    exit 1
+}
 
+# Create necessary directories and log file
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO)" >> "$LOG_FILE"
 
+# Function to set up hyprshell
 setup_hyprshell() {
     echo "Installing hyprshell"
     if yay -Ss ^hyprshell$ | grep -q ^hyprshell$; then
@@ -83,42 +92,32 @@ setup_hyprshell() {
         echo "INSTALLED_PACKAGE: hyprshell" >> "$LOG_FILE"
         echo "Installed hyprshell"
     fi
-
     echo "Configuring hyprshell"
     mkdir -p ~/.config/hyprshell/ || { echo "Error: Failed to create ~/.config/hyprshell/"; exit 1; }
 
     cat > ~/.config/hyprshell/config.toml << 'EOF'
 layerrules = true
 kill_bind = "ctrl+shift+alt, h"
-
 [windows]
 scale = 8.5
 workspaces_per_row = 5
 strip_html_from_workspace_title = true
-
 [windows.overview.open]
 key = "Tab"
 modifier = "super"
-
 [windows.overview.navigate]
 forward = "tab"
-
 [windows.overview.navigate.reverse]
 mod = "shift"
-
 [windows.overview.other]
 filter_by = []
 hide_filtered = false
-
 [windows.switch.open]
 modifier = "alt"
-
 [windows.switch.navigate]
 forward = "tab"
-
 [windows.switch.navigate.reverse]
 mod = "shift"
-
 [windows.switch.other]
 filter_by = []
 hide_filtered = true
@@ -130,20 +129,15 @@ EOF
 :root {
     --border-color: rgba(90, 90, 120, 0.4);
     --border-color-active: rgba(239, 9, 9, 0.9);
-
     --bg-color: rgba(20, 20, 20, 0.9);
     --bg-color-hover: rgba(40, 40, 50, 1);
-
     --border-radius: 12px;
     --border-size: 3px;
     --border-style: solid;
     --border-style-secondary: dashed;
-
     --text-color: rgba(245, 245, 245, 1);
-
     --window-padding: 2px;
 }
-
 .monitor {}
 .workspace {}
 .client {}
@@ -173,9 +167,9 @@ EOF
     fi
 }
 
-
+# Install yay if not present
 if ! command -v yay >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
+    sudo_yad pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
     git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
     cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
     makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
@@ -185,6 +179,17 @@ if ! command -v yay >/dev/null 2>&1; then
     echo "Installed yay"
 else
     echo "Skipping: yay already installed"
+fi
+
+# Install yad if not present (required for -outsudo)
+if [[ "$USE_YAD_SUDO" == true ]]; then
+    if ! command -v yad >/dev/null 2>&1; then
+        sudo_yad pacman -Syu --noconfirm yad || { echo "Error: Failed to install yad"; exit 1; }
+        echo "INSTALLED_PACKAGE: yad" >> "$LOG_FILE"
+        echo "Installed yad"
+    else
+        echo "Skipping: yad already installed"
+    fi
 fi
 
 if $HYPRSHELL_ONLY; then
@@ -211,7 +216,8 @@ if $OSU_ONLY; then
     exit 0
 fi
 
-sudo pacman -Syy --noconfirm
+# Update pacman
+sudo_yad pacman -Syy --noconfirm
 
 echo "Installing pacman packages"
 PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite spotify"
@@ -221,7 +227,7 @@ fi
 
 for pkg in $PACMAN_PACKAGES; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
-        sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
         echo "Installed $pkg"
     else
@@ -245,12 +251,12 @@ for pkg in $YAY_PACKAGES; do
         echo "Skipping: $pkg already installed"
     fi
     if [ "$pkg" = "hyprshell" ]; then
-      hyprshell_installed=true
+        hyprshell_installed=true
     fi
 done
 
-if [ "$hyprshell_installed" = "true" ]; then
-  setup_hyprshell
+if [ "$hyprshell_installed" = true ]; then
+    setup_hyprshell
 fi
 
 if $INSTALL_OSU; then
@@ -273,7 +279,6 @@ fi
 
 if $NETFLIX; then
     [ ! -f "$BRAVE_SOURCE_DIR/$BRAVE_DESKTOP_FILE" ] && { echo "Error: $BRAVE_DESKTOP_FILE not found in $BRAVE_SOURCE_DIR"; exit 1; }
-
     mkdir -p "$USER_DIR" || { echo "Error: Failed to create $USER_DIR"; exit 1; }
 
     if [ ! -f "$USER_DIR/$BRAVE_DESKTOP_FILE" ]; then
@@ -349,8 +354,8 @@ fi
 echo "Setting up steam"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "Enabling multilib repository..."
-    sudo sed -i '/#\[multilib\]/,/#Include = \/etc\/pacman.d\/mirrorlist/ s/#//' /etc/pacman.conf
-    sudo pacman -Syy
+    sudo_yad sed -i '/#\[multilib\]/,/#Include = \/etc\/pacman.d\/mirrorlist/ s/#//' /etc/pacman.conf
+    sudo_yad pacman -Syy
 else
     echo "Multilib repository is already enabled."
 fi
@@ -393,11 +398,10 @@ else
 EOF
     echo "Default Steam Play configuration created. Will apply after first login."
 fi
-
 echo "Finished setting up steam"
 
 if ! command -v flatpak >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
+    sudo_yad pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
     echo "INSTALLED_PACKAGE: flatpak" >> "$LOG_FILE"
     echo "Installed flatpak"
 else
@@ -432,23 +436,22 @@ for pkg in "${FLATPAK_PACKAGES[@]}"; do
 done
 
 if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
-    sudo ydotool &
+    sudo_yad ydotool &
     echo "Generating gpu-screen-recorder config files"
     flatpak run com.dec05eba.gpu_screen_recorder &
     sleep 1
     window=$(hyprctl clients -j | jq -r '.[] | select(.class=="gpu-screen-recorder") | .address')
     if [[ -n "$window" ]]; then
-        hyprctl dispatch focuswindow-eth address:$window
+        hyprctl dispatch focuswindow address:$window
         echo "Focused gpu-screen-recorder window"
         sleep 1
-        sudo ydotool mousemove 500 400 click 1
+        sudo_yad ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
         ~/.local/lib/hyde/dontkillsteam.sh || { echo "Error: Failed to execute dontkillsteam.sh"; exit 1; }
     else
         echo "Window not found."
     fi
-
     echo "Editing gpu-screen-recorder config"
     CONFIG_FILE="/home/$USER/.var/app/com.dec05eba.gpu_screen_recorder/config/gpu-screen-recorder/config"
     sleep 1
@@ -517,21 +520,17 @@ echo "Setting up image viewers"
 xdg-mime default feh.desktop image/png image/jpeg image/bmp image/webp
 echo "Set feh as default for PNG, JPEG, BMP, and WEBP" >> "$LOG_FILE"
 echo "Set feh as default for PNG, JPEG, BMP, and WEBP"
-
 xdg-mime default nomacs.desktop image/gif
 echo "Set nomacs as default for GIF" >> "$LOG_FILE"
 echo "Set nomacs as default for GIF"
-
 echo "Checking default applications for image formats..."
 xdg-mime query default image/png >> "$LOG_FILE"
 xdg-mime query default image/gif >> "$LOG_FILE"
 xdg-mime query default image/png
 xdg-mime query default image/gif
-
 echo "feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
 
 echo "Setting KWrite as the default text editor"
-
 xdg-mime default org.kde.kwrite.desktop text/plain
 xdg-mime default org.kde.kwrite.desktop application/x-shellscript
 xdg-mime default org.kde.kwrite.desktop application/json
