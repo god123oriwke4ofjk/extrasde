@@ -144,49 +144,35 @@ EOF
     --window-padding: 2px;
 }
 
-.monitor {
-}
-
-.workspace {
-}
-
-.client {
-}
-
-.client-image {
-}
-
-.launcher {
-}
-
-.launcher-input {
-}
-
-.launcher-results {
-}
-
-.launcher-item {
-}
-
-.launcher-exec {
-}
-
-.launcher-key {
-}
-
-.launcher-plugins {
-}
-
-.launcher-plugin {
-}
+.monitor {}
+.workspace {}
+.client {}
+.client-image {}
+.launcher {}
+.launcher-input {}
+.launcher-results {}
+.launcher-item {}
+.launcher-exec {}
+.launcher-key {}
+.launcher-plugins {}
+.launcher-plugin {}
 EOF
     echo "CREATED_FILE: ~/.config/hyprshell/style.css" >> "$LOG_FILE"
     echo "Created hyprshell style.css"
 
-    systemctl --user enable hyprshell.service || { echo "Error: Failed to enable hyprshell.service"; exit 1; }
-    echo "ENABLED_SERVICE: hyprshell.service" >> "$LOG_FILE"
-    echo "Enabled and started hyprshell.service"
+    USERPREFS_FILE="$HOME/.config/hypr/userprefs.conf"
+    mkdir -p "$(dirname "$USERPREFS_FILE")"
+    touch "$USERPREFS_FILE"
+
+    if ! grep -Fxq "exec-once = hyprshell run &" "$USERPREFS_FILE"; then
+        echo "exec-once = hyprshell run &" >> "$USERPREFS_FILE"
+        echo "MODIFIED_CONFIG: Added hyprshell run to $USERPREFS_FILE" >> "$LOG_FILE"
+        echo "Added 'exec-once = hyprshell run &' to $USERPREFS_FILE"
+    else
+        echo "Skipping: 'exec-once = hyprshell run &' already exists in $USERPREFS_FILE"
+    fi
 }
+
 
 if ! command -v yay >/dev/null 2>&1; then
     sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
