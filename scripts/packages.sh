@@ -44,9 +44,10 @@ for arg in "$@"; do
         osu) INSTALL_OSU=true ;;
         lts) INSTALL_LTS=true ;;
         -netflix) NETFLIX=true ;;
-        --noclip) NOCLIP=true ;;
-        osuonly) OSU_ONLY=true ;;
+        -noclip) NOCLIP=true ;;
+        -osuonly) OSU_ONLY=true ;;
         -hyprshell) HYPRSHELL_ONLY=true ;;
+        -outsudo) USE_YAD_SUDO=true ;;
         -h|-help) help_function ;;
         *) echo "Warning: Unknown argument '$arg' ignored" ;;
     esac
@@ -56,12 +57,34 @@ if ! grep -qi "arch" /etc/os-release; then
     echo "Error: This script is designed for Arch Linux."
     exit 1
 fi
+sudo_yad() {
+    if [[ "$USE_YAD_SUDO" == true ]]; then
+        yad --title="Sudo Password Required" --window-icon=system-lock-screen \
+            --text="Enter your sudo password to continue:" \
+            --entry --hide-text --width=300 --center \
+            --button="OK:0" --button="Cancel:1" | sudo -S -v "$@"
+        return $?
+    else
+        sudo "$@"
+        return $?
+    fi
+}
+[ "$EUID" -eq "0" ] && { echo "Error: This script must not be run as root."; exit 1; }
+if! grep -qi "arch" /etc/os-release; then
+    echo "Error: This script is designed for Arch Linux."
+    exit 1
+fi
+command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
+ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || {
+    echo "Error: No internet connection."
+    exit 1
+}
 command -v pacman >/dev/null 2>&1 || { echo "Error: pacman not found. This script requires Arch Linux."; exit 1; }
 ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://google.com >/dev/null 2>&1 || { echo "Error: No internet connection."; exit 1; }
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO" >> "$LOG_FILE"
 setup_hyprshell() {
     echo "Installing hyprshell"
     if yay -Ss ^hyprshell$ | grep -q ^hyprshell$; then
@@ -142,7 +165,7 @@ EOF
     fi
 }
 if ! command -v yay >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
+    sudo_yad pacman -Syu --noconfirm git base-devel || { echo "Error: Failed to install git and base-devel"; exit 1; }
     git clone https://aur.archlinux.org/yay.git /tmp/yay || { echo "Error: Failed to clone yay repository"; exit 1; }
     cd /tmp/yay || { echo "Error: Failed to change to /tmp/yay"; exit 1; }
     makepkg -si --noconfirm || { echo "Error: Failed to build and install yay"; exit 1; }
@@ -175,7 +198,7 @@ if $OSU_ONLY; then
     echo "Script Finished (osuonly mode)"
     exit 0
 fi
-sudo pacman -Syy --noconfirm
+sudo_yad pacman -Syy --noconfirm
 echo "Installing pacman packages"
 PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite spotify"
 if $INSTALL_LTS; then
@@ -183,7 +206,7 @@ if $INSTALL_LTS; then
 fi
 for pkg in $PACMAN_PACKAGES; do
     if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
-        sudo pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
+        sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
         echo "Installed $pkg"
     else
@@ -297,8 +320,8 @@ fi
 echo "Setting up steam"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "Enabling multilib repository..."
-    sudo sed -i '/#\[multilib\]/,/#Include = \/etc\/pacman.d\/mirrorlist/ s/#//' /etc/pacman.conf
-    sudo pacman -Syy
+    sudo_yad sed -i '/#\[multilib\]/,/#Include = \/etc\/pacman.d\/mirrorlist/ s/#//' /etc/pacman.conf
+    sudo_yad pacman -Syy
 else
     echo "Multilib repository is already enabled."
 fi
@@ -340,7 +363,7 @@ EOF
 fi
 echo "Finished setting up steam"
 if ! command -v flatpak >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
+    sudo_yad pacman -Syu --noconfirm flatpak || { echo "Error: Failed to install flatpak"; exit 1; }
     echo "INSTALLED_PACKAGE: flatpak" >> "$LOG_FILE"
     echo "Installed flatpak"
 else
@@ -371,7 +394,7 @@ for pkg in "${FLATPAK_PACKAGES[@]}"; do
     fi
 done
 if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recorder; then
-    sudo ydotool &
+    sudo_yad ydotool &
     echo "Generating gpu-screen-recorder config files"
     flatpak run com.dec05eba.gpu_screen_recorder &
     sleep 1
@@ -380,7 +403,7 @@ if [ "$NOCLIP" = false ] && flatpak list | grep -q com.dec05eba.gpu_screen_recor
         hyprctl dispatch focuswindow address:$window
         echo "Focused gpu-screen-recorder window"
         sleep 1
-        sudo ydotool mousemove 500 400 click 1
+        sudo_yad ydotool mousemove 500 400 click 1
         echo "Clicked on the window"
         sleep 1
         ~/.local/lib/hyde/dontkillsteam.sh || { echo "Error: Failed to execute dontkillsteam.sh"; exit 1; }
