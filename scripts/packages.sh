@@ -210,7 +210,7 @@ if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
 for pkg in $PACMAN_PACKAGES; do
-    if ! pacman -Qs "$pkg" >/dev/null 2>&1; then
+    if ! pacman -Qq | grep -Fxq "$pkg"; then
         sudo_yad pacman -Syu --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
         echo "Installed $pkg"
