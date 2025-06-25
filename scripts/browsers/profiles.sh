@@ -11,8 +11,7 @@ PROFILE_INI="$FIREFOX_PROFILE_DIR/profiles.ini"
 ZEN_PROFILE_DIR="$HOME/.zen"
 ZEN_PROFILE_INI="$ZEN_PROFILE_DIR/profiles.ini"
 DYNAMIC_BROWSER_SCRIPT="$SCRIPT_DIR/dynamic-browser.sh"
-SCRIPT_BASEDIR="$(dirname "$(realpath "$0")")"
-CONFIG_DIR="$SCRIPT_BASEDIR/config"
+CONFIG_DIR="$HOME/Extra/config"  # <--- modified path
 
 NO_DYNAMIC=false
 
@@ -56,30 +55,31 @@ if [ "$NO_DYNAMIC" = false ]; then
                     [ -x "$script_path" ] || { chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }; echo "Made $script_path executable."; }
                 fi
             fi
-                cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
-                chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
-                echo "Created and made $script_path executable."
-                echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
-            fi
-            ls -l "$script_path"
-        done
-
-        if [ -f "$USERPREFS_CONF" ]; then
-            current_timestamp=$(date +%s)
-            cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
-            echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
-            echo "Backed up $USERPREFS_CONF"
-        fi
-        if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
-            echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
-            echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
-            echo "Configured dynamic-browser.sh to run on login"
         else
-            echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
+            cp "$src_script" "$script_path" || { echo "Error: Failed to copy $src_script to $script_path"; exit 1; }
+            chmod +x "$script_path" || { echo "Error: Failed to make $script_path executable"; exit 1; }
+            echo "Created and made $script_path executable."
+            echo "CREATED_SCRIPT: $script_name -> $script_path" >> "$LOG_FILE"
         fi
-    else
-        echo "Skipping dynamic-browser.sh installation and configuration (nodynamic)"
+        ls -l "$script_path"
+    done
+
+    if [ -f "$USERPREFS_CONF" ]; then
+        current_timestamp=$(date +%s)
+        cp "$USERPREFS_CONF" "$BACKUP_DIR/userprefs.conf.$current_timestamp" || { echo "Error: Failed to backup $USERPREFS_CONF"; exit 1; }
+        echo "BACKUP_CONFIG: $USERPREFS_CONF -> $BACKUP_DIR/userprefs.conf.$current_timestamp" >> "$LOG_FILE"
+        echo "Backed up $USERPREFS_CONF"
     fi
+    if ! grep -q "exec-once=$DYNAMIC_BROWSER_SCRIPT" "$USERPREFS_CONF" 2>/dev/null; then
+        echo "exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$USERPREFS_CONF" || { echo "Error: Failed to add dynamic-browser.sh to $USERPREFS_CONF"; exit 1; }
+        echo "MODIFIED_CONFIG: $USERPREFS_CONF -> Added exec-once=$DYNAMIC_BROWSER_SCRIPT" >> "$LOG_FILE"
+        echo "Configured dynamic-browser.sh to run on login"
+    else
+        echo "Skipping: dynamic-browser.sh already configured in $USERPREFS_CONF"
+    fi
+else
+    echo "Skipping dynamic-browser.sh installation and configuration (nodynamic)"
+fi
 
 if command -v firefox >/dev/null 2>&1; then
     if [ ! -d "$FIREFOX_PROFILE_DIR" ] || [ ! -f "$PROFILE_INI" ]; then
@@ -95,7 +95,7 @@ if command -v firefox >/dev/null 2>&1; then
         if [ -n "$PROFILE_PATH" ]; then
             FIREFOX_PREFS_FILE="$FIREFOX_PROFILE_DIR/$PROFILE_PATH/prefs.js"
             if [ -f "$FIREFOX_PREFS_FILE" ]; then
-                if grep -q 'userpref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
+                if grep -q 'user_pref("general.autoScroll", true)' "$FIREFOX_PREFS_FILE"; then
                     echo "Skipping: Firefox autoscrolling is already enabled."
                 else
                     pkill -f firefox 2>/dev/null
@@ -145,7 +145,7 @@ if command -v zen >/dev/null 2>&1 || [ -x "/opt/zen-browser-bin/zen-bin" ]; then
             else
                 echo "Warning: Zen Browser prefs.js not found at $ZEN_PREFS_FILE. Skipping autoscrolling."
             fi
-                else
+        else
             echo "Warning: Could not find default profile in Zen Browser profiles.ini. Skipping autoscrolling."
         fi
     else
