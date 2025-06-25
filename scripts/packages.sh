@@ -214,7 +214,7 @@ fi
 sudo pacman -Syy --noconfirm
 
 echo "Installing pacman packages"
-PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs"
+PACMAN_PACKAGES="xclip ydotool wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite"
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
 fi
@@ -522,7 +522,25 @@ xdg-mime query default image/gif >> "$LOG_FILE"
 xdg-mime query default image/png
 xdg-mime query default image/gif
 
-echo "Setup complete! feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
+echo "feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
+
+echo "Setting KWrite as the default text editor"
+
+xdg-mime default org.kde.kwrite.desktop text/plain
+xdg-mime default org.kde.kwrite.desktop application/x-shellscript
+xdg-mime default org.kde.kwrite.desktop application/json
+xdg-mime default org.kde.kwrite.desktop application/x-pacman-package
+
+if ! grep -q "kwrite" ~/.bashrc; then
+    echo 'export EDITOR=kwrite' >> ~/.bashrc
+    echo 'export VISUAL=kwrite' >> ~/.bashrc
+    echo "Set kwrite as default EDITOR and VISUAL in .bashrc"
+else
+    echo "Skipping: kwrite already set as EDITOR/VISUAL"
+fi
+
+echo "KWrite has been installed and set as the default editor"
+echo "DEFAULT_EDITOR: kwrite" >> "$LOG_FILE"
 
 echo "Script Finished"
 exit 0
