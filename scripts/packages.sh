@@ -74,7 +74,7 @@ ping -c 1 8.8.8.8 >/dev/null 2>&1 || curl -s --head --connect-timeout 5 https://
 mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create $(dirname "$LOG_FILE")"; exit 1; }
 mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; }
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO" >> "$LOG_FILE"
+echo "[$(date)] New installation session (brave-vesktop, noclip: $NOCLIP, osuonly: $OSU_ONLY, hyprshell_only: $HYPRSHELL_ONLY, outsudo: $USE_YAD_SUDO )" >> "$LOG_FILE"
 
 setup_hyprshell() {
     echo "Installing hyprshell"
