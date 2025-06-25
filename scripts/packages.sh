@@ -221,14 +221,14 @@ fi
 hyprshell_installed=false
 for pkg in $YAY_PACKAGES; do
     if ! yay -Qs "$pkg" >/dev/null 2>&1; then
+        if [ "$pkg" = "hyprshell" ]; then
+          hyprshell_installed=true
+        fi
         yay -S --noconfirm "$pkg" || { echo "Error: Failed to install $pkg"; exit 1; }
         echo "INSTALLED_PACKAGE: $pkg" >> "$LOG_FILE"
         echo "Installed $pkg"
     else
         echo "Skipping: $pkg already installed"
-    fi
-    if [ "$pkg" = "hyprshell" ]; then
-      hyprshell_installed=true
     fi
 done
 if [ "$hyprshell_installed" = "true" ]; then
