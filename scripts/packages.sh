@@ -59,11 +59,16 @@ if ! grep -qi "arch" /etc/os-release; then
 fi
 sudo_yad() {
     if [[ "$USE_YAD_SUDO" == true ]]; then
-        yad --title="Sudo Password Required" --window-icon=system-lock-screen \
-            --text="Enter your sudo password to continue:" \
-            --entry --hide-text --width=300 --center \
-            --button="OK:0" --button="Cancel:1" | sudo -S -v "$@"
-        return $?
+        if sudo -n true 2>/dev/null; then
+            sudo "$@"
+            return $?
+        else
+            yad --title="Sudo Password Required" --window-icon=system-lock-screen \
+                --text="Enter your sudo password to continue:" \
+                --entry --hide-text --width=300 --center \
+                --button="OK:0" --button="Cancel:1" | sudo -S -v "$@"
+            return $?
+        fi
     else
         sudo "$@"
         return $?
