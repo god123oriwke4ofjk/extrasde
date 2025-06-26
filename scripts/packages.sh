@@ -525,5 +525,6 @@ else
 fi
 echo "KWrite has been installed and set as the default editor"
 echo "DEFAULT_EDITOR: kwrite" >> "$LOG_FILE"
+vpn.sh setup
 echo "Script Finished"
 exit 0
