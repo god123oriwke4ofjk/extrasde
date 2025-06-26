@@ -1,7 +1,7 @@
 #!/bin/bash
 
 THEME_DIR="$HOME/.config/hyde/themes"
-WALLPAPER_DIR="$THEME_DIR/wallpapers"
+WALLPAPER_DIR="$HOME/Extra/scripts/themes/wallpapers"
 
 declare -A THEMES=(
   ["Oxo Carbon"]="https://github.com/rishav12s/Oxo-Carbon"
@@ -86,7 +86,7 @@ done
 
 echo "Copying fastfetch logos"
 rm -rf ~/.config/fastfetch/logo/*
-cp -r $THEME_DIR/fastfetch/* ~/.config/fastfetch/logo/
+cp -r $HOME/scripts/themes/fastfetch/* ~/.config/fastfetch/logo/
 
 echo "Finished setting up themes."
 exit 0
