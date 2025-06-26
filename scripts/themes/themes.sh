@@ -84,5 +84,9 @@ for src in "${!WALLPAPER_MAP[@]}"; do
   move_wallpapers "$src" "${WALLPAPER_MAP[$src]}"
 done
 
+echo "Copying fastfetch logos"
+rm -rf ~/.config/fastfetch/logo/*
+cp -r fastfetch/* ~/.config/fastfetch/logo/
+
 echo "Finished setting up themes."
 exit 0
