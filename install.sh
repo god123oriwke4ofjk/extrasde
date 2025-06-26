@@ -24,6 +24,8 @@ NO_DYNAMIC=false
 LOG_ONLY=false
 OUTSUDO=false
 HELP=false
+NOCONFIRM=false
+NOCONFIRM_YES=false
 while [[ "$1" =~ ^- ]]; do
     case $1 in
         --browser)
@@ -58,6 +60,14 @@ while [[ "$1" =~ ^- ]]; do
             HELP=true
             shift
             ;;
+        --noconfirm)
+            NOCONFIRM=true
+            if [[ "$2" == "yes" ]]; then
+                NOCONFIRM_YES=true
+                shift
+            fi
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -75,6 +85,8 @@ if [ "$HELP" = true ]; then
     echo "  --kb                  Configure keyboard layout (us,il) in Hyprland userprefs."
     echo "  -log                  Log actions to $LOG_FILE without performing them."
     echo "  -outsudo              Use a GUI (yad) prompt for sudo instead of CLI."
+    echo "  --noconfirm [yes]     Automatically select default option for file replacements."
+    echo "                        Use 'yes' to always select 'yes' for replacements, even if [y/N]."
     echo "  -h, -help             Display this help message and exit."
     exit 0
 fi
@@ -115,7 +127,7 @@ fi
 if [ "$LOG_ONLY" = true ]; then
     mkdir -p "$(dirname "$LOG_FILE")" || { echo "Error: Failed to create directory for $LOG_FILE"; exit 1; }
     touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-    echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO)" >> "$LOG_FILE"
+    echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO, Noconfirm: $NOCONFIRM, Noconfirm_yes: $NOCONFIRM_YES)" >> "$LOG_FILE"
     
     if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
         echo "CREATED_SUDOERS: $SUDOERS_FILE" >> "$LOG_FILE"
@@ -178,7 +190,7 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create $BACKUP_DIR"; exit 1; 
 mkdir -p "$(dirname "$USERPREFS_CONF")" || { echo "Error: Failed to create $(dirname "$USERPREFS_CONF")"; exit 1; }
 
 touch "$LOG_FILE" || { echo "Error: Failed to create $LOG_FILE"; exit 1; }
-echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO)" >> "$LOG_FILE"
+echo "[$(date)] New installation session (Browser only: $BROWSER_ONLY, Keybind only: $KEYBIND_ONLY, Sudoers only: $SUDOERS_ONLY, Keyboard only: $KEYBOARD_ONLY, No dynamic: $NO_DYNAMIC, Log only: $LOG_ONLY, Outsudo: $OUTSUDO, Noconfirm: $NOCONFIRM, Noconfirm_yes: $NOCONFIRM_YES)" >> "$LOG_FILE"
 
 if [ "$SUDOERS_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$KEYBOARD_ONLY" = false ]; }; then
     echo "Configuring sudoers requires sudo privileges."
@@ -221,7 +233,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
 
     if [ -f "$KEYBINDINGS_CONF" ]; then
         find "$BACKUP_DIR" -type f -name "keybindings.conf.bak" -delete || { echo "Warning: Failed to delete previous keybindings.conf.bak"; }
-        cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak" || { echo "Error: Failed to backup $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"; exit 1; }
+        cp ascendancy cp "$KEYBINDINGS_CONF" "$BACKUP_DIR/keybindings.conf.bak" || { echo "Error: Failed to backup $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"; exit 1; }
         echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
         echo "Backed up $KEYBINDINGS_CONF to $BACKUP_DIR/keybindings.conf.bak"
     fi
@@ -256,7 +268,15 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
             for file in "${replace_files[@]}"; do
                 echo "- $(basename "$file")"
             done
-            read -p "Replace these files in $SCRIPT_DIR? [y/N]: " replace_choice
+            if [ "$NOCONFIRM" = true ]; then
+                if [ "$NOCONFIRM_YES" = true ]; then
+                    replace_choice="y"
+                else
+                    replace_choice="n"
+                fi
+            else
+                read -p "Replace these files in $SCRIPT_DIR? [y/N]: " replace_choice
+            fi
             if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
                 for file in "${replace_files[@]}"; do
                     target_file="$SCRIPT_DIR/$(basename "$file")"
@@ -488,7 +508,15 @@ if [ "$BROWSER_ONLY" = false ] && [ "$KEYBIND_ONLY" = false ] && [ "$SUDOERS_ONL
         for file in "${replace_files[@]}"; do
             echo "- $(basename "$file")"
         done
-        read -p "Replace these files in $ICON_DIR? [y/N]: " replace_choice
+        if [ "$NOCONFIRM" = true ]; then
+            if [ "$NOCONFIRM_YES" = true ]; then
+                replace_choice="y"
+            else
+                replace_choice="n"
+            fi
+        else
+            read -p "Replace these files in $ICON_DIR? [y/N]: " replace_choice
+        fi
         if [[ "$replace_choice" =~ ^[Yy]$ ]]; then
             for file in "${replace_files[@]}"; do
                 target_file="$ICON_DIR/$(basename "$file")"
