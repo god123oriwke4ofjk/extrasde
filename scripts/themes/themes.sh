@@ -86,7 +86,7 @@ done
 
 echo "Copying fastfetch logos"
 rm -rf ~/.config/fastfetch/logo/*
-cp -r $HOME/scripts/themes/fastfetch/* ~/.config/fastfetch/logo/
+cp -r $HOME/Extra/scripts/themes/fastfetch/* ~/.config/fastfetch/logo/
 
 echo "Finished setting up themes."
 exit 0
