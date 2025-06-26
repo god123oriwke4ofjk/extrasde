@@ -31,19 +31,30 @@ confDir="${XDG_CONFIG_HOME:-$HOME/.config}"
 iconDir="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
 image_dirs=()
 hyde_distro_logo=${iconDir}/Wallbash-Icon/distro/$LOGO
-theme_logo_dir="${confDir}/fastfetch/logo/${HYDE_THEME}"
+# Normalize theme name: replace spaces with hyphens for consistency
+theme_name=$(echo "${HYDE_THEME}" | tr ' ' '-')
+theme_logo_dir="${confDir}/fastfetch/logo/${theme_name}"
 
 # Parse the main command
 case $1 in
 logo) # eats around 13 ms
   random() {
     (
-      # Only use theme-specific logo directory if it exists
-      if [ -n "${HYDE_THEME}" ] && [ -d "${theme_logo_dir}" ]; then
-        image_dirs+=("${theme_logo_dir}")
+      # Check if theme-specific logo directory exists and has valid files
+      if [ -n "${theme_name}" ] && [ -d "${theme_logo_dir}" ]; then
+        if [ -n "$(find -L "${theme_logo_dir}" -maxdepth 1 -type f \( -name "*.icon" -o -name "*logo*" -o -name "*.png" \) ! -path "*/wall.set*" ! -path "*/wallpapers/*.png" 2>/dev/null)" ]; then
+          image_dirs+=("${theme_logo_dir}")
+        else
+          echo "Debug: No valid logo files found in ${theme_logo_dir}" >&2
+        fi
       else
-        # Fallback to general fastfetch logo directory if theme directory is missing
+        echo "Debug: Theme directory ${theme_logo_dir} does not exist" >&2
+        # Fallback to general fastfetch logo directory
         image_dirs+=("${confDir}/fastfetch/logo")
+      fi
+      if [ ${#image_dirs[@]} -eq 0 ]; then
+        echo "Debug: No valid directories to search for logos" >&2
+        exit 1
       fi
       find -L "${image_dirs[@]}" -maxdepth 1 -type f \( -name "*.icon" -o -name "*logo*" -o -name "*.png" \) ! -path "*/wall.set*" ! -path "*/wallpapers/*.png" 2>/dev/null
     ) | shuf -n 1
@@ -89,12 +100,16 @@ HELP
         image_dirs+=("${iconDir}/Wallbash-Icon/fastfetch/")
         ;;
       --theme)
-        if [ -n "${HYDE_THEME}" ] && [ -d "${theme_logo_dir}" ]; then
+        if [ -n "${theme_name}" ] && [ -d "${theme_logo_dir}" ]; then
           image_dirs+=("${theme_logo_dir}")
         fi
         ;;
       esac
     done
+    if [ ${#image_dirs[@]} -eq 0 ]; then
+      echo "Debug: No valid directories specified for logo search" >&2
+      exit 1
+    fi
     find -L "${image_dirs[@]}" -maxdepth 1 -type f \( -name "*.icon" -o -name "*logo*" -o -name "*.png" \) ! -path "*/wall.set*" ! -path "*/wallpapers/*.png" 2>/dev/null
   ) | shuf -n 1
 
