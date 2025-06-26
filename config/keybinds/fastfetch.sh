@@ -38,16 +38,13 @@ case $1 in
 logo) # eats around 13 ms
   random() {
     (
-      # Prioritize theme-specific logo directory if it exists
+      # Only use theme-specific logo directory if it exists
       if [ -n "${HYDE_THEME}" ] && [ -d "${theme_logo_dir}" ]; then
         image_dirs+=("${theme_logo_dir}")
       else
-        # Fallback to general logo directories
+        # Fallback to general fastfetch logo directory if theme directory is missing
         image_dirs+=("${confDir}/fastfetch/logo")
-        image_dirs+=("${iconDir}/Wallbash-Icon/fastfetch/")
       fi
-      [ -f "$hyde_distro_logo" ] && image_dirs+=("$hyde_distro_logo")
-      [ -f "$HOME/.face.icon" ] && image_dirs+=("$HOME/.face.icon")
       find -L "${image_dirs[@]}" -maxdepth 1 -type f \( -name "*.icon" -o -name "*logo*" -o -name "*.png" \) ! -path "*/wall.set*" ! -path "*/wallpapers/*.png" 2>/dev/null
     ) | shuf -n 1
   }
@@ -61,8 +58,8 @@ options:
   --local   Display a logo from the general fastfetch logo directory
   --wall    Display a logo from the wallbash fastfetch directory
   --theme   Display a logo from the current theme's logo directory
-  --rand    Display a random logo
-  *         Display a random logo
+  --rand    Display a random logo from the current theme
+  *         Display a random logo from the current theme
   *help*    Display this help message
 
 Note: Options can be combined to search across multiple sources
