@@ -384,7 +384,7 @@ if [ "$KEYBIND_ONLY" = true ] || { [ "$BROWSER_ONLY" = false ] && [ "$SUDOERS_ON
 fi
 
 if [ "$BROWSER_ONLY" = true ]; then
-    BROWSER_SCRIPT="$SCRIPT_BASEDIR/browsers.sh"
+    BROWSER_SCRIPT="$SCRIPT_BASEDIR/scripts/browsers/browsers.sh"
     if [ ! -f "$BROWSER_SCRIPT" ]; then
         echo "Error: $BROWSER_SCRIPT not found."
         exit 1
