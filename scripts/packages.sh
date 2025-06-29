@@ -524,7 +524,7 @@ xdg-mime default org.kde.kwrite.desktop text/plain
 xdg-mime default org.kde.kwrite.desktop application/x-shellscript
 xdg-mime default org.kde.kwrite.desktop application/json
 xdg-mime default org.kde.kwrite.desktop application/x-pacman-package
-if ! grep -q "kwrite" ~/.bashrc; then
+if ! grep -q "kwrite" ~/.zshrc; then
     echo 'export EDITOR=kwrite' >> ~/.bashrc
     echo 'export VISUAL=kwrite' >> ~/.bashrc
     echo "Set kwrite as default EDITOR and VISUAL in .bashrc"
