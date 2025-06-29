@@ -512,6 +512,9 @@ xdg-mime query default image/png
 xdg-mime query default image/gif
 echo "feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
 echo "Setting KWrite as the default text editor"
+if ! pacman -Qs vim >/dev/null 2>&1; then
+    sudo_yad pacman -Rns vim
+fi
 xdg-mime default org.kde.kwrite.desktop text/plain
 xdg-mime default org.kde.kwrite.desktop application/x-shellscript
 xdg-mime default org.kde.kwrite.desktop application/json
