@@ -513,7 +513,7 @@ xdg-mime query default image/gif
 echo "feh is set as default for images (PNG, JPEG, BMP, WEBP), and nomacs for GIFs."
 echo "Setting KWrite as the default text editor"
 echo "Checking for vim"
-if ! pacman -Qs vim >/dev/null 2>&1; then
+if pacman -Qs vim >/dev/null 2>&1; then
     echo "Removing vim"
     sudo_yad pacman -Rns vim
     echo "Removed vim"
