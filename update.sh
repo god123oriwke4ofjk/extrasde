@@ -293,6 +293,8 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
     fi
 fi
 
+$HOME/Extra/scripts/fonts.sh
+
 rm -rf $TEMP_FOLDER
 trap - ERR
 
