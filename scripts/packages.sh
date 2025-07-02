@@ -515,7 +515,7 @@ echo "Setting KWrite as the default text editor"
 echo "Checking for vim"
 if pacman -Qs vim >/dev/null 2>&1; then
     echo "Removing vim"
-    sudo_yad pacman -Rns vim
+    sudo_yad pacman -Rns vim --noconfirm
     echo "Removed vim"
 else 
     echo "Skipped removing vim"
