@@ -39,7 +39,7 @@ install_netflix() {
     echo "Checking for Netflix..."
     if command_exists yay && yay -Qs netflix >/dev/null 2>&1; then
         echo "Installing Netflix wallbash"
-        NETFLIX_REPO="https://github.com/god123oriwke4ofjk/anki-wallbash"
+        NETFLIX_REPO="https://github.com/god123oriwke4ofjk/netflix-wallbash"
         git clone "$NETFLIX_REPO" /tmp/netflixWallbash || { echo "Error: Failed to clone Netflix wallbash repository"; exit 1; }
         cd /tmp/netflixWallbash || { echo "Error: Failed to change to /tmp/netflixWallbash"; exit 1; }
         if [ -f setup.sh ]; then
