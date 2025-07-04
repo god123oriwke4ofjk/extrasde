@@ -29,9 +29,6 @@ restore_files() {
     exit 1
 }
 
-set -e
-trap restore_files ERR
-
 mkdir -p $TEMP_FOLDER
 
 FORCE_UPDATE=0
@@ -70,8 +67,7 @@ check_repo_updates() {
 
     if [ "$repo_name" = "Extra" ]; then
         if [[ "$REMOTE_URL" =~ ^https:// ]]; then
-            git ls-remote --heads >/dev/null 2>&1
-            if [ $? -eq 0 ]; then
+            if git ls-remote --heads >/dev/null 2>&1; then
                 echo "The repository $repo_name can be pulled without authentication."
             else
                 echo "Warning: The repository $repo_name requires authentication for git pull. Skipping."
@@ -114,7 +110,7 @@ check_repo_updates() {
         return 0
     else
         echo "$repo_name has updates available. Pulling changes..."
-        $pull_command
+        stdbuf -oL -eL $pull_command
         if [ $? -eq 0 ]; then
             echo "$repo_name updated successfully."
             return 1
@@ -126,6 +122,7 @@ check_repo_updates() {
 }
 
 check_self_update() {
+    local current_hash new_hash
     local script_path="$SCRIPT_PATH"
     local new_script_path="$NEW_SCRIPT_PATH"
 
@@ -134,7 +131,7 @@ check_self_update() {
         return 1
     fi
 
-    local current_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
+    current_hash=$(sha256sum "$script_path" | cut -d' ' -f1)
 
     if [ -f "$new_script_path" ]; then
         echo "Error: $new_script_path already exists, please remove or rename it."
@@ -206,10 +203,8 @@ if [ -f "$SCRIPT_DIR/vpn.sh" ]; then
 fi
 
 check_repo_updates "$HOME/Extra" "git pull"
-case $? in
-    1) extra_updated=1 ;;
-    2) echo "Skipping Extra repo update due to access issues." ;;
-esac
+[ $? -eq 1 ] && extra_updated=1
+
 check_repo_updates "$HYDE_HOME" "git pull origin master"
 [ $? -eq 1 ] && hyde_updated=1
 
@@ -225,12 +220,12 @@ if [ ! -f "$LOG_FILE" ]; then
     exit 0
 fi
 
-mv "$LOG_FILE" "$TEMP_FOLDER/install.log" 2>/dev/null || echo "Warning: Failed to move $LOG_FILE to $TEMP_FOLDER/install.log"
+mv "$LOG_FILE" "$TEMP_FOLDER/install.log" 2>/dev/null || echo "Warning: Failed to move $LOG_FILE to $TEMP_FOLDER"
 
 if grep -q "MODIFIED_KEYBINDINGS:" "$TEMP_FOLDER/install.log"; then
     echo "Found modified keybinds file, setting it up for update."
-    cp "$HYDE_HOME/Configs/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/tmp/cp_error
-    if grep -q "cannot stat" /tmp/cp_error; then
+    cp "$HYDE_HOME/Configs/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/tmp/cp_error || true
+    if grep -q "cannot stat" /tmp/cp_error 2>/dev/null; then
         if [ ! -f "$HOME/.config/hypr/keybindings.conf" ]; then
             if [ -f "$HOME/.config/hypr/keybindings.conf.save" ]; then
                 cp "$HOME/.config/hypr/keybindings.conf.save" "$HOME/.config/hypr/keybindings.conf"
@@ -245,8 +240,10 @@ fi
 
 if [ $extra_updated -eq 1 ] || [ $hyde_updated -eq 1 ] || [ $FORCE_UPDATE -eq 1 ]; then
     echo "Updating hyde..."
+    trap restore_files ERR
     cd "$HYDE_HOME/Scripts"
     ./install.sh -r
+    trap - ERR
 fi
 
 mv "$TEMP_FOLDER/install.log" "$LOG_FILE" 2>/dev/null || echo "Warning: Failed to restore install.log"
@@ -266,7 +263,7 @@ if [ $vpn_script_existed -eq 1 ] || [ $extra_updated -eq 1 ] || [ $FORCE_UPDATE 
     fi
 fi
 
-if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf" 2>/dev/null; then
+if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf"; then
     echo "Changed keybind.conf, updating..."
     mkdir -p "$HOME/.config/hypr"
     if [ -f "$TEMP_FOLDER/keybindings.conf" ]; then
@@ -285,10 +282,9 @@ if ! cmp -s "$HOME/.config/hypr/keybindings.conf" "$TEMP_FOLDER/keybindings.conf
             echo "BACKUP_CONFIG: $KEYBINDINGS_CONF -> $BACKUP_DIR/keybindings.conf.bak" >> "$LOG_FILE"
             echo "Backed up keybindings.conf"
         fi
-        bash "$HOME/Extra/install.sh" --keybind || {
-            echo "Error: Failed to run install.sh --keybind"
-            restore_files
-        }
+        trap restore_files ERR
+        bash "$HOME/Extra/install.sh" --keybind
+        trap - ERR
         echo "Ran install.sh --keybind"
         echo "MODIFIED_KEYBINDINGS: Updated via install.sh --keybind" >> "$LOG_FILE"
     fi
@@ -297,7 +293,6 @@ fi
 $HOME/Extra/scripts/fonts.sh
 
 rm -rf $TEMP_FOLDER
-trap - ERR
 
 echo "Update successfully completed"
 exit 0
