@@ -210,7 +210,8 @@ case $? in
     1) extra_updated=1 ;;
     2) echo "Skipping Extra repo update due to access issues." ;;
 esac
-check_repo_updates "$HYDE_HOME" "git pull origin master" || hyde_updated=1
+check_repo_updates "$HYDE_HOME" "git pull origin master"
+[ $? -eq 1 ] && hyde_updated=1
 
 if [ $extra_updated -eq 0 ] && [ $hyde_updated -eq 0 ] && [ $FORCE_UPDATE -eq 0 ]; then
     echo "Both repositories are up to date. There's nothing to update."
