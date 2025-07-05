@@ -205,7 +205,7 @@ if $OSU_ONLY; then
 fi
 sudo_yad pacman -Syy --noconfirm
 echo "Installing pacman packages"
-PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite spotify npm"
+PACMAN_PACKAGES="xclip ydotool nano wget unzip wine steam proton mpv ffmpeg gnome-software pinta libreoffice yad duf feh nomacs kwrite spotify npm wf-recorder slurp power-profiles-daemon cava pacman-contrib"
 DIRECT_PACMAN_PACKAGES="spotify"
 if $INSTALL_LTS; then
     PACMAN_PACKAGES="$PACMAN_PACKAGES linux-lts linux-lts-headers"
